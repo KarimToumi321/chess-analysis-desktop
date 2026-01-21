@@ -6,8 +6,16 @@ class Arrow {
   final String from;
   final String to;
   final Color color;
+  final String? piece;
 
-  Arrow({required this.from, required this.to, this.color = Colors.red});
+  Arrow({
+    required this.from,
+    required this.to,
+    this.color = Colors.red,
+    this.piece,
+  });
+
+  bool get isKnightArrow => piece != null && (piece!.toLowerCase() == 'n');
 
   @override
   bool operator ==(Object other) =>
@@ -50,29 +58,112 @@ class InteractiveBoardView extends StatefulWidget {
   State<InteractiveBoardView> createState() => _InteractiveBoardViewState();
 }
 
-class _InteractiveBoardViewState extends State<InteractiveBoardView> {
+class _InteractiveBoardViewState extends State<InteractiveBoardView>
+    with SingleTickerProviderStateMixin {
   String? _selectedSquare;
   List<String> _legalMoves = [];
   String? _arrowStart;
   Offset? _arrowDragPosition;
   late chess.Chess _chessEngine;
+  late AnimationController _animationController;
+  late Animation<double> _animation;
+  String _previousFen = '';
+  Map<String, String> _animatingPieces = {}; // destination -> source square
+  Set<String> _animatingFromSquares = {}; // squares that pieces are leaving
+  Map<String, String> _animatingPieceTypes = {}; // destination -> piece type
 
   @override
   void initState() {
     super.initState();
     _chessEngine = chess.Chess();
     _updateChessEngine();
+    _previousFen = widget.fen;
+
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 250),
+      vsync: this,
+    );
+
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(InteractiveBoardView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fen != widget.fen) {
+      _startPositionAnimation(oldWidget.fen, widget.fen);
       _updateChessEngine();
       setState(() {
         _selectedSquare = null;
         _legalMoves = [];
       });
+    }
+  }
+
+  void _startPositionAnimation(String oldFen, String newFen) {
+    final oldBoard = _boardFromFen(oldFen);
+    final newBoard = _boardFromFen(newFen);
+
+    _animatingPieces.clear();
+    _animatingFromSquares.clear();
+    _animatingPieceTypes.clear();
+
+    // Count total pieces to detect backward navigation
+    // If piece count increases, a captured piece is returning (backward nav)
+    int oldPieceCount = 0;
+    int newPieceCount = 0;
+
+    for (var rank = 0; rank < 8; rank++) {
+      for (var file = 0; file < 8; file++) {
+        if (oldBoard[rank][file] != null) oldPieceCount++;
+        if (newBoard[rank][file] != null) newPieceCount++;
+      }
+    }
+
+    // Skip animation on backward navigation (piece count increases)
+    if (newPieceCount > oldPieceCount) {
+      _previousFen = oldFen;
+      return;
+    }
+
+    // Find pieces that moved
+    for (var rank = 0; rank < 8; rank++) {
+      for (var file = 0; file < 8; file++) {
+        final square = _getSquareName(file, rank);
+        final oldPiece = oldBoard[rank][file];
+        final newPiece = newBoard[rank][file];
+
+        if (newPiece != null && newPiece != oldPiece) {
+          // This square has a new piece, find where it came from
+          for (var r = 0; r < 8; r++) {
+            for (var f = 0; f < 8; f++) {
+              final fromSquare = _getSquareName(f, r);
+              if (oldBoard[r][f] == newPiece && newBoard[r][f] != newPiece) {
+                // Found the piece's previous position
+                _animatingPieces[square] = fromSquare;
+                _animatingFromSquares.add(fromSquare);
+                _animatingPieceTypes[square] = newPiece;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    _previousFen = oldFen;
+
+    if (_animatingPieces.isNotEmpty) {
+      _animationController.forward(from: 0.0);
     }
   }
 
@@ -88,6 +179,26 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
   List<String> _getLegalMoves(String square) {
     final moves = _chessEngine.moves({'square': square, 'verbose': true});
     return moves.map((move) => move['to'] as String).toList();
+  }
+
+  String? _getKingInCheckSquare() {
+    if (_chessEngine.in_check) {
+      // Find the king of the side to move
+      final sideToMove = _chessEngine.turn;
+      final kingPiece = sideToMove == chess.Color.WHITE ? 'K' : 'k';
+
+      // Search for the king on the board
+      for (var rank = 0; rank < 8; rank++) {
+        for (var file = 0; file < 8; file++) {
+          final square = _getSquareName(file, rank);
+          final piece = _getPieceAt(square);
+          if (piece == kingPiece) {
+            return square;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   @override
@@ -182,6 +293,8 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
                         final square = _getSquareName(displayFile, displayRank);
                         final isSelected = _selectedSquare == square;
                         final isLegalMove = _legalMoves.contains(square);
+                        final kingInCheckSquare = _getKingInCheckSquare();
+                        final isKingInCheck = square == kingInCheckSquare;
 
                         return DragTarget<_DragData>(
                           onWillAcceptWithDetails: (details) {
@@ -196,20 +309,18 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
                           },
                           builder: (context, candidateData, rejectedData) {
                             final isHovered = candidateData.isNotEmpty;
+
+                            // Base board color
+                            final baseColor = isLight
+                                ? const Color(0xFFF0D9B5)
+                                : const Color(0xFFB58863);
+
                             return GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onTap: () => _handleSquareTap(square, piece),
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: isHovered
-                                      ? Colors.blue.withOpacity(0.3)
-                                      : isSelected
-                                      ? Colors.yellow.withOpacity(0.5)
-                                      : isLegalMove
-                                      ? Colors.green.withOpacity(0.3)
-                                      : isLight
-                                      ? const Color(0xFFF0D9B5)
-                                      : const Color(0xFFB58863),
+                                  color: baseColor,
                                   border: Border.all(
                                     color: Colors.black.withOpacity(0.05),
                                     width: 0.5,
@@ -217,38 +328,39 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
                                 ),
                                 child: Stack(
                                   children: [
+                                    // King in check overlay
+                                    if (isKingInCheck)
+                                      Container(
+                                        color: Colors.red.withOpacity(0.4),
+                                      ),
+                                    // Selected square overlay
+                                    if (isSelected)
+                                      Container(
+                                        color: Colors.yellow.withOpacity(0.5),
+                                      ),
+                                    // Legal move overlay
+                                    if (isLegalMove)
+                                      Container(
+                                        color: Colors.green.withOpacity(0.3),
+                                      ),
+                                    // Hover overlay
+                                    if (isHovered)
+                                      Container(
+                                        color: Colors.blue.withOpacity(0.3),
+                                      ),
                                     if (rank == 7 || file == 0)
                                       _buildCoordinates(file, rank, isLight),
-                                    if (piece != null)
-                                      Center(
-                                        child: Draggable<_DragData>(
-                                          data: _DragData(
-                                            from: square,
-                                            piece: piece,
-                                          ),
-                                          dragAnchorStrategy:
-                                              pointerDragAnchorStrategy,
-                                          feedback: Material(
-                                            color: Colors.transparent,
-                                            child: SizedBox(
-                                              width: squareSize,
-                                              height: squareSize,
-                                              child: _buildPiece(
-                                                piece,
-                                                squareSize,
-                                                isDragging: true,
-                                              ),
-                                            ),
-                                          ),
-                                          childWhenDragging: Opacity(
-                                            opacity: 0.3,
-                                            child: _buildPiece(
-                                              piece,
-                                              squareSize,
-                                            ),
-                                          ),
-                                          child: _buildPiece(piece, squareSize),
-                                        ),
+                                    if (piece != null &&
+                                        !(_animationController.isAnimating &&
+                                            (_animatingFromSquares.contains(
+                                                  square,
+                                                ) ||
+                                                _animatingPieceTypes[square] ==
+                                                    piece)))
+                                      _buildStaticPiece(
+                                        piece,
+                                        square,
+                                        squareSize,
                                       ),
                                     if (isLegalMove && piece == null)
                                       Center(
@@ -271,6 +383,9 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
                         );
                       },
                     ),
+                    // Overlay animating pieces on top
+                    if (_animationController.isAnimating)
+                      ..._buildAnimatingPiecesOverlay(boardSize, squareSize),
                     IgnorePointer(
                       child: CustomPaint(
                         size: Size(boardSize, boardSize),
@@ -293,6 +408,78 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
     );
   }
 
+  Widget _buildStaticPiece(String piece, String square, double squareSize) {
+    return Center(
+      child: Draggable<_DragData>(
+        data: _DragData(from: square, piece: piece),
+        dragAnchorStrategy: (draggable, context, position) {
+          return Offset(squareSize / 2, squareSize / 2);
+        },
+        feedback: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            width: squareSize,
+            height: squareSize,
+            child: _buildPiece(piece, squareSize, isDragging: true),
+          ),
+        ),
+        childWhenDragging: Opacity(
+          opacity: 0.3,
+          child: _buildPiece(piece, squareSize),
+        ),
+        child: _buildPiece(piece, squareSize),
+      ),
+    );
+  }
+
+  List<Widget> _buildAnimatingPiecesOverlay(
+    double boardSize,
+    double squareSize,
+  ) {
+    final squares = _boardFromFen(widget.fen);
+    final widgets = <Widget>[];
+
+    _animatingPieces.forEach((toSquare, fromSquare) {
+      final toFile = toSquare.codeUnitAt(0) - 'a'.codeUnitAt(0);
+      final toRank = 8 - int.parse(toSquare[1]);
+      final fromFile = fromSquare.codeUnitAt(0) - 'a'.codeUnitAt(0);
+      final fromRank = 8 - int.parse(fromSquare[1]);
+
+      final toDisplayFile = widget.flipped ? 7 - toFile : toFile;
+      final toDisplayRank = widget.flipped ? 7 - toRank : toRank;
+      final fromDisplayFile = widget.flipped ? 7 - fromFile : fromFile;
+      final fromDisplayRank = widget.flipped ? 7 - fromRank : fromRank;
+
+      // Get the piece from new position
+      final piece = squares[toRank][toFile];
+      if (piece == null) return;
+
+      widgets.add(
+        AnimatedBuilder(
+          animation: _animation,
+          builder: (context, child) {
+            final currentFile =
+                fromDisplayFile +
+                (toDisplayFile - fromDisplayFile) * _animation.value;
+            final currentRank =
+                fromDisplayRank +
+                (toDisplayRank - fromDisplayRank) * _animation.value;
+
+            return Positioned(
+              left: currentFile * squareSize,
+              top: currentRank * squareSize,
+              width: squareSize,
+              height: squareSize,
+              child: _buildPiece(piece, squareSize),
+            );
+          },
+        ),
+      );
+    });
+
+    return widgets;
+  }
+
   String? _getSquareFromPosition(Offset position, double boardSize) {
     final squareSize = boardSize / 8;
     final file = (position.dx / squareSize).floor();
@@ -307,7 +494,8 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView> {
   }
 
   void _addArrow(String from, String to) {
-    final newArrow = Arrow(from: from, to: to);
+    final piece = _getPieceAt(from);
+    final newArrow = Arrow(from: from, to: to, piece: piece);
     final currentArrows = List<Arrow>.from(widget.arrows);
 
     // Toggle arrow if it already exists
@@ -544,7 +732,13 @@ class ArrowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     // Draw saved arrows
     for (final arrow in arrows) {
-      _drawArrow(canvas, arrow.from, arrow.to, arrow.color);
+      _drawArrow(
+        canvas,
+        arrow.from,
+        arrow.to,
+        arrow.color,
+        arrow.isKnightArrow,
+      );
     }
 
     // Draw current dragging arrow
@@ -553,7 +747,13 @@ class ArrowPainter extends CustomPainter {
     }
   }
 
-  void _drawArrow(Canvas canvas, String from, String to, Color color) {
+  void _drawArrow(
+    Canvas canvas,
+    String from,
+    String to,
+    Color color,
+    bool isKnightArrow,
+  ) {
     final fromOffset = _getSquareCenter(from);
     final toOffset = _getSquareCenter(to);
 
@@ -563,11 +763,24 @@ class ArrowPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    // Draw line
-    canvas.drawLine(fromOffset, toOffset, paint);
+    if (isKnightArrow) {
+      _drawKnightArrow(canvas, fromOffset, toOffset, paint);
+    } else {
+      // Calculate shortened line to avoid overlap with arrowhead
+      final direction = toOffset - fromOffset;
+      final length = direction.distance;
+      if (length > 0.01) {
+        final unitDir = direction / length;
+        final arrowSize = squareSize * 0.4;
+        // Stop the line before the arrowhead
+        final lineEnd = toOffset - unitDir * arrowSize;
 
-    // Draw arrowhead
-    _drawArrowhead(canvas, fromOffset, toOffset, paint);
+        // Draw straight line
+        canvas.drawLine(fromOffset, lineEnd, paint);
+        // Draw arrowhead
+        _drawArrowhead(canvas, fromOffset, toOffset, paint, arrowSize);
+      }
+    }
   }
 
   void _drawDraggingArrow(Canvas canvas, String from, Offset to) {
@@ -579,11 +792,64 @@ class ArrowPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    canvas.drawLine(fromOffset, to, paint);
-    _drawArrowhead(canvas, fromOffset, to, paint);
+    final direction = to - fromOffset;
+    final length = direction.distance;
+    if (length > 0.01) {
+      final unitDir = direction / length;
+      final arrowSize = squareSize * 0.4;
+      final lineEnd = to - unitDir * arrowSize;
+
+      canvas.drawLine(fromOffset, lineEnd, paint);
+      _drawArrowhead(canvas, fromOffset, to, paint, arrowSize);
+    }
   }
 
-  void _drawArrowhead(Canvas canvas, Offset from, Offset to, Paint paint) {
+  void _drawKnightArrow(Canvas canvas, Offset from, Offset to, Paint paint) {
+    // Calculate the L-shaped path for knight moves
+    final dx = to.dx - from.dx;
+    final dy = to.dy - from.dy;
+
+    // Determine if it's a 2-1 or 1-2 knight move
+    final absX = dx.abs();
+    final absY = dy.abs();
+
+    Offset midPoint;
+    if (absX > absY) {
+      // Horizontal then vertical (2-1 move)
+      midPoint = Offset(to.dx, from.dy);
+    } else {
+      // Vertical then horizontal (1-2 move)
+      midPoint = Offset(from.dx, to.dy);
+    }
+
+    final arrowSize = squareSize * 0.4;
+    final direction = to - midPoint;
+    final length = direction.distance;
+
+    if (length > 0.01) {
+      final unitDir = direction / length;
+      final lineEnd = to - unitDir * arrowSize;
+
+      // Draw the L-shaped path
+      final path = Path()
+        ..moveTo(from.dx, from.dy)
+        ..lineTo(midPoint.dx, midPoint.dy)
+        ..lineTo(lineEnd.dx, lineEnd.dy);
+
+      canvas.drawPath(path, paint);
+
+      // Draw arrowhead at the end
+      _drawArrowhead(canvas, midPoint, to, paint, arrowSize);
+    }
+  }
+
+  void _drawArrowhead(
+    Canvas canvas,
+    Offset from,
+    Offset to,
+    Paint paint,
+    double arrowSize,
+  ) {
     final direction = to - from;
     final length = direction.distance;
     if (length < 0.01) return;
@@ -591,7 +857,6 @@ class ArrowPainter extends CustomPainter {
     final unitDir = direction / length;
     final perpendicular = Offset(-unitDir.dy, unitDir.dx);
 
-    final arrowSize = squareSize * 0.4;
     final arrowBack = to - unitDir * arrowSize;
     final arrowLeft = arrowBack + perpendicular * (arrowSize * 0.5);
     final arrowRight = arrowBack - perpendicular * (arrowSize * 0.5);
