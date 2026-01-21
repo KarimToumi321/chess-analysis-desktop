@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 class EngineService {
@@ -9,15 +10,25 @@ class EngineService {
   final StreamController<String> _lines = StreamController.broadcast();
   final List<String> _logs = [];
 
+  final bool _logToConsole;
+  final bool _traceUciTraffic;
+
+  EngineService({bool logToConsole = false, bool traceUciTraffic = false})
+    : _logToConsole = logToConsole,
+      _traceUciTraffic = traceUciTraffic;
+
   Stream<String> get lines => _lines.stream;
   bool get isRunning => _process != null;
   List<String> get logs => List.unmodifiable(_logs);
 
-  void _log(String message) {
+  void _log(String message, {bool isUciTraffic = false}) {
+    if (isUciTraffic && !_traceUciTraffic) return;
     final timestamp = DateTime.now().toIso8601String();
     final logMessage = '[$timestamp] $message';
     _logs.add(logMessage);
-    print(logMessage); // Also print to console
+    if (_logToConsole) {
+      developer.log(logMessage, name: 'EngineService');
+    }
   }
 
   Future<void> start(String enginePath) async {
@@ -46,7 +57,7 @@ class EngineService {
           .transform(const LineSplitter())
           .listen(
             (line) {
-              _log('STDOUT: $line');
+              _log('STDOUT: $line', isUciTraffic: true);
               _lines.add(line);
             },
             onError: (error) {
@@ -59,7 +70,7 @@ class EngineService {
           .transform(const LineSplitter())
           .listen(
             (line) {
-              _log('STDERR: $line');
+              _log('STDERR: $line', isUciTraffic: true);
               _lines.add(line);
             },
             onError: (error) {
@@ -182,6 +193,121 @@ class EngineService {
     } catch (e) {
       _log('❌ Error sending command: $e');
     }
+  }
+
+  Future<Map<String, dynamic>?> analyzePosition(
+    String fen,
+    Duration timePerMove,
+  ) async {
+    if (_process == null) {
+      _log('❌ Cannot analyze: Engine not running');
+      return null;
+    }
+
+    _log('🔍 Analyzing position (time: ${timePerMove.inMilliseconds}ms)');
+    _send('ucinewgame');
+    _send('position fen $fen');
+    _send('go movetime ${timePerMove.inMilliseconds}');
+
+    try {
+      String? lastInfoWithScore;
+      String? bestMove;
+
+      final completer = Completer<void>();
+      late StreamSubscription<String> subscription;
+
+      subscription = lines.listen((line) {
+        if (line.startsWith('info') && line.contains('score')) {
+          lastInfoWithScore = line;
+        } else if (line.startsWith('bestmove')) {
+          final parts = line.split(' ');
+          final index = parts.indexOf('bestmove');
+          if (index >= 0 && index + 1 < parts.length) {
+            bestMove = parts[index + 1];
+          }
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        }
+      });
+
+      // Wait for bestmove with timeout
+      await completer.future.timeout(
+        timePerMove + const Duration(seconds: 2),
+        onTimeout: () {
+          _log('⏱️ Timeout waiting for analysis');
+        },
+      );
+
+      await subscription.cancel();
+
+      // Combine results
+      final result = <String, dynamic>{};
+      if (bestMove != null) {
+        result['bestmove'] = bestMove;
+      }
+      if (lastInfoWithScore != null) {
+        final score = _parseScore(lastInfoWithScore!);
+        if (score != null) {
+          result.addAll(score);
+        }
+      }
+
+      return result.isNotEmpty ? result : null;
+    } catch (e) {
+      _log('❌ Error analyzing position: $e');
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getBestMove(
+    String fen,
+    Duration timePerMove,
+  ) async {
+    // Use the combined analysis method for efficiency
+    final result = await analyzePosition(fen, timePerMove);
+    if (result == null) return null;
+    return {'bestmove': result['bestmove']};
+  }
+
+  Future<Map<String, dynamic>?> getEvaluation(
+    String fen,
+    Duration timePerMove,
+  ) async {
+    // Use the combined analysis method for efficiency
+    final result = await analyzePosition(fen, timePerMove);
+    if (result == null) return null;
+
+    final evaluation = <String, dynamic>{};
+    if (result.containsKey('cp')) {
+      evaluation['cp'] = result['cp'];
+    }
+    if (result.containsKey('mate')) {
+      evaluation['mate'] = result['mate'];
+    }
+    return evaluation.isNotEmpty ? evaluation : null;
+  }
+
+  Map<String, dynamic>? _parseScore(String infoLine) {
+    // Parse: info depth 20 score cp 25 nodes 1234 ...
+    // or: info depth 20 score mate 3 nodes 1234 ...
+    final parts = infoLine.split(' ');
+
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] == 'score' && i + 2 < parts.length) {
+        final scoreType = parts[i + 1];
+        final scoreValue = int.tryParse(parts[i + 2]);
+
+        if (scoreValue != null) {
+          if (scoreType == 'cp') {
+            return {'cp': scoreValue};
+          } else if (scoreType == 'mate') {
+            return {'mate': scoreValue};
+          }
+        }
+      }
+    }
+    return null;
   }
 
   Future<String> _waitFor(String token, {required Duration timeout}) async {

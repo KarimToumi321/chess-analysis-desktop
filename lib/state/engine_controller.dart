@@ -29,6 +29,7 @@ class EngineController extends ChangeNotifier {
   double? get currentEvaluation => _currentEvaluation;
   int? get currentDepth => _currentDepth;
   List<String> get engineLogs => _engine.logs;
+  EngineService get engineService => _engine;
 
   void _setBusy(bool value) {
     _isBusy = value;
@@ -54,27 +55,45 @@ class EngineController extends ChangeNotifier {
     print('🎮 Loading bundled Stockfish...');
     _setBusy(true);
     try {
-      // Look for bundled Stockfish in assets
+      // Look for bundled Stockfish - use path directly from assets folder
+      // When running locally, this points to assets/stockfish/stockfish.exe
       final exePath = 'assets/stockfish/stockfish.exe';
       print('📁 Looking for engine at: $exePath');
 
       _enginePath = exePath;
-      _status = 'Testing bundled engine...';
+      _status = 'Starting bundled engine...';
       _errorMessage = null;
       notifyListeners();
 
-      await _testEngine();
+      // Start the engine directly without stopping it
+      await _engine.start(_enginePath!);
+      print('✅ Bundled Stockfish started successfully');
 
-      if (_errorMessage == null) {
-        _status = 'Bundled Stockfish ready';
-        print('✅ Bundled Stockfish loaded successfully');
-      }
+      _status = 'Bundled Stockfish ready';
+      _errorMessage = null;
     } catch (e) {
       print('❌ Failed to load bundled engine: $e');
       _errorMessage = e.toString();
       _status = 'Failed to load bundled engine';
     } finally {
       _setBusy(false);
+    }
+  }
+
+  Future<void> ensureEngineReady() async {
+    if (_engine.isRunning) {
+      print('✓ Engine already running');
+      return;
+    }
+
+    if (_enginePath == null || _enginePath!.isEmpty) {
+      print('🚀 No engine loaded, loading bundled Stockfish...');
+      await useBundledEngine();
+    } else {
+      print('🚀 Starting engine at: $_enginePath');
+      await _engine.start(_enginePath!);
+      _status = 'Engine ready';
+      notifyListeners();
     }
   }
 

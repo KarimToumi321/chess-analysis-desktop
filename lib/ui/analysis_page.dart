@@ -477,6 +477,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               onSelect: chess.setIndex,
               onCreateVariation: () =>
                   _showCreateVariationDialog(context, chess),
+              gameAnalysis: chess.gameAnalysis,
             ),
           ),
         ],

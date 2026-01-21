@@ -3,6 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../state/chess_controller.dart';
+import '../state/engine_controller.dart';
+import '../services/analysis_service.dart';
 import 'analysis_page.dart';
 
 class PgnSelectionPage extends StatefulWidget {
@@ -15,6 +17,7 @@ class PgnSelectionPage extends StatefulWidget {
 class _PgnSelectionPageState extends State<PgnSelectionPage> {
   final TextEditingController _pgnController = TextEditingController();
   String _fileName = '';
+  bool _analyzeWithEngine = false;
 
   @override
   void initState() {
@@ -130,6 +133,19 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    CheckboxListTile(
+                      value: _analyzeWithEngine,
+                      onChanged: (value) {
+                        setState(() => _analyzeWithEngine = value ?? false);
+                      },
+                      title: const Text('Analyze with Stockfish'),
+                      subtitle: const Text(
+                        'Evaluate moves and calculate accuracy (0.25s per move)',
+                      ),
+                      secondary: const Icon(Icons.speed),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
+                    const SizedBox(height: 24),
                     Row(
                       children: [
                         Expanded(
@@ -201,12 +217,59 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
     });
   }
 
-  void _startAnalysis() {
+  void _startAnalysis() async {
     final chess = context.read<ChessController>();
     chess.loadPgn(_pgnController.text.trim());
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const AnalysisPage()),
+
+    // Start analysis if requested
+    if (_analyzeWithEngine && chess.moves.isNotEmpty) {
+      final analysisCompleted = await _runAnalysis(chess);
+      if (!analysisCompleted) return; // Don't navigate if analysis failed
+    }
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const AnalysisPage()),
+      );
+    }
+  }
+
+  Future<bool> _runAnalysis(ChessController chess) async {
+    final engineController = context.read<EngineController>();
+
+    // Ensure engine is loaded and ready
+    try {
+      await engineController.ensureEngineReady();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start engine: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+
+    final analysisService = AnalysisService(engineController.engineService);
+
+    // Show progress dialog
+    if (!mounted) return false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _AnalysisProgressDialog(
+        analysisService: analysisService,
+        moves: chess.moves,
+        onComplete: (analysis) {
+          chess.setGameAnalysis(analysis);
+        },
+      ),
     );
+
+    return result ?? false;
   }
 
   void _startWithEmptyPosition() {
@@ -214,6 +277,100 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
     chess.loadPgn('');
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const AnalysisPage()),
+    );
+  }
+}
+
+class _AnalysisProgressDialog extends StatefulWidget {
+  final AnalysisService analysisService;
+  final List<String> moves;
+  final Function(dynamic) onComplete;
+
+  const _AnalysisProgressDialog({
+    required this.analysisService,
+    required this.moves,
+    required this.onComplete,
+  });
+
+  @override
+  State<_AnalysisProgressDialog> createState() =>
+      _AnalysisProgressDialogState();
+}
+
+class _AnalysisProgressDialogState extends State<_AnalysisProgressDialog> {
+  int _current = 0;
+  int _total = 0;
+  String _status = 'Starting analysis...';
+
+  @override
+  void initState() {
+    super.initState();
+    _total = widget.moves.length;
+    _runAnalysis();
+  }
+
+  Future<void> _runAnalysis() async {
+    try {
+      final analysis = await widget.analysisService.analyzeGame(
+        moves: widget.moves,
+        startingFen: '',
+        onProgress: (current, total) {
+          if (mounted) {
+            setState(() {
+              _current = current;
+              _total = total;
+              _status = 'Analyzing move $current of $total...';
+            });
+          }
+        },
+      );
+
+      widget.onComplete(analysis);
+
+      if (mounted) {
+        setState(() => _status = 'Analysis complete!');
+        await Future.delayed(const Duration(seconds: 1));
+        if (mounted) Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _status = 'Error: $e');
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) Navigator.of(context).pop(false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = _total > 0 ? _current / _total : 0.0;
+
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.analytics),
+          SizedBox(width: 12),
+          Text('Analyzing Game'),
+        ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(_status),
+            const SizedBox(height: 16),
+            LinearProgressIndicator(value: progress),
+            const SizedBox(height: 8),
+            Text(
+              '${(_current / _total * 100).toStringAsFixed(0)}%',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

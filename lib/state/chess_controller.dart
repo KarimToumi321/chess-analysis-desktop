@@ -3,6 +3,7 @@ import 'package:chess/chess.dart' as chess;
 
 import '../utils/pgn_parser.dart';
 import '../models/variation.dart';
+import '../models/move_analysis.dart';
 import '../ui/interactive_board_view.dart';
 
 class ChessController extends ChangeNotifier {
@@ -11,6 +12,9 @@ class ChessController extends ChangeNotifier {
   int _currentIndex = 0;
   String _pgnText = '';
   String? _error;
+
+  // Analysis support
+  GameAnalysis? _gameAnalysis;
 
   // Variation support
   GameTree _gameTree = GameTree(
@@ -36,6 +40,7 @@ class ChessController extends ChangeNotifier {
   String? get error => _error;
   GameTree get gameTree => _gameTree;
   Variation get currentVariation => _gameTree.currentVariation;
+  GameAnalysis? get gameAnalysis => _gameAnalysis;
 
   String get fen => _readFen();
 
@@ -547,6 +552,11 @@ class ChessController extends ChangeNotifier {
     } catch (_) {
       return false;
     }
+  }
+
+  void setGameAnalysis(GameAnalysis? analysis) {
+    _gameAnalysis = analysis;
+    notifyListeners();
   }
 
   String _readFen() {

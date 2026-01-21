@@ -67,17 +67,18 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
   late chess.Chess _chessEngine;
   late AnimationController _animationController;
   late Animation<double> _animation;
-  String _previousFen = '';
-  Map<String, String> _animatingPieces = {}; // destination -> source square
-  Set<String> _animatingFromSquares = {}; // squares that pieces are leaving
-  Map<String, String> _animatingPieceTypes = {}; // destination -> piece type
+  final Map<String, String> _animatingPieces =
+      {}; // destination -> source square
+  final Set<String> _animatingFromSquares =
+      {}; // squares that pieces are leaving
+  final Map<String, String> _animatingPieceTypes =
+      {}; // destination -> piece type
 
   @override
   void initState() {
     super.initState();
     _chessEngine = chess.Chess();
     _updateChessEngine();
-    _previousFen = widget.fen;
 
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 250),
@@ -131,7 +132,6 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
 
     // Skip animation on backward navigation (piece count increases)
     if (newPieceCount > oldPieceCount) {
-      _previousFen = oldFen;
       return;
     }
 
@@ -159,8 +159,6 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
         }
       }
     }
-
-    _previousFen = oldFen;
 
     if (_animatingPieces.isNotEmpty) {
       _animationController.forward(from: 0.0);
