@@ -18,6 +18,7 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
   final TextEditingController _pgnController = TextEditingController();
   String _fileName = '';
   bool _analyzeWithEngine = false;
+  int _analysisTimeMs = 500;
 
   @override
   void initState() {
@@ -139,12 +140,37 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
                         setState(() => _analyzeWithEngine = value ?? false);
                       },
                       title: const Text('Analyze with Stockfish'),
-                      subtitle: const Text(
-                        'Evaluate moves and calculate accuracy (0.25s per move)',
+                      subtitle: Text(
+                        'Evaluate moves and calculate accuracy (${(_analysisTimeMs / 1000).toStringAsFixed(2)}s per move)',
                       ),
                       secondary: const Icon(Icons.speed),
                       controlAffinity: ListTileControlAffinity.leading,
                     ),
+                    if (_analyzeWithEngine) ...[
+                      const SizedBox(height: 8),
+                      DropdownMenu<int>(
+                        initialSelection: _analysisTimeMs,
+                        label: const Text('Engine time per move'),
+                        onSelected: (value) {
+                          if (value == null) return;
+                          setState(() => _analysisTimeMs = value);
+                        },
+                        dropdownMenuEntries: const [
+                          DropdownMenuEntry(
+                            value: 250,
+                            label: '0.25s (Fast)',
+                          ),
+                          DropdownMenuEntry(
+                            value: 500,
+                            label: '0.50s (Accurate)',
+                          ),
+                          DropdownMenuEntry(
+                            value: 1000,
+                            label: '1.00s (Very accurate)',
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -263,6 +289,7 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
       builder: (context) => _AnalysisProgressDialog(
         analysisService: analysisService,
         moves: chess.moves,
+        timePerMove: Duration(milliseconds: _analysisTimeMs),
         onComplete: (analysis) {
           chess.setGameAnalysis(analysis);
         },
@@ -284,11 +311,13 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
 class _AnalysisProgressDialog extends StatefulWidget {
   final AnalysisService analysisService;
   final List<String> moves;
+  final Duration timePerMove;
   final Function(dynamic) onComplete;
 
   const _AnalysisProgressDialog({
     required this.analysisService,
     required this.moves,
+    required this.timePerMove,
     required this.onComplete,
   });
 
@@ -314,12 +343,14 @@ class _AnalysisProgressDialogState extends State<_AnalysisProgressDialog> {
       final analysis = await widget.analysisService.analyzeGame(
         moves: widget.moves,
         startingFen: '',
+        timePerMove: widget.timePerMove,
         onProgress: (current, total) {
           if (mounted) {
             setState(() {
               _current = current;
               _total = total;
-              _status = 'Analyzing move $current of $total...';
+              _status =
+                  'Analyzing move $current of $total (${widget.timePerMove.inMilliseconds}ms/move)...';
             });
           }
         },
