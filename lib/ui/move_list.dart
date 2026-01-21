@@ -77,14 +77,17 @@ class MoveList extends StatelessWidget {
 
               return ListTile(
                 dense: true,
-                title: Row(
+                title: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 6,
                   children: [
                     Text('$prefix ${moves[index]}'),
                     if (moveAnalysis != null) ...[
-                      const SizedBox(width: 8),
                       _ClassificationBadge(
                         classification: moveAnalysis.classification,
                       ),
+                      ...moveAnalysis.tags.map((t) => _TagChip(tag: t)),
                     ],
                   ],
                 ),
@@ -167,6 +170,8 @@ class _ClassificationBadge extends StatelessWidget {
     switch (classification) {
       case MoveClassification.best:
         return _BadgeConfig('Best', Colors.green.shade700);
+      case MoveClassification.great:
+        return _BadgeConfig('Great', Colors.purple.shade700);
       case MoveClassification.excellent:
         return _BadgeConfig('Exc', Colors.green.shade600);
       case MoveClassification.good:
@@ -175,10 +180,48 @@ class _ClassificationBadge extends StatelessWidget {
         return _BadgeConfig('?!', Colors.orange.shade700);
       case MoveClassification.mistake:
         return _BadgeConfig('?', Colors.deepOrange.shade700);
+      case MoveClassification.miss:
+        return _BadgeConfig('Miss', Colors.blueGrey.shade700);
       case MoveClassification.blunder:
         return _BadgeConfig('??', Colors.red.shade700);
       case MoveClassification.brilliant:
         return _BadgeConfig('!!', Colors.cyan.shade700);
+    }
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  final MoveTag tag;
+
+  const _TagChip({required this.tag});
+
+  @override
+  Widget build(BuildContext context) {
+    final config = _getTagConfig();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: config.color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: config.color, width: 1),
+      ),
+      child: Text(
+        config.label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: config.color,
+        ),
+      ),
+    );
+  }
+
+  _BadgeConfig _getTagConfig() {
+    switch (tag) {
+      case MoveTag.forced:
+        return _BadgeConfig('Forced', Colors.indigo.shade700);
+      case MoveTag.onlyMove:
+        return _BadgeConfig('Only move', Colors.teal.shade700);
     }
   }
 }

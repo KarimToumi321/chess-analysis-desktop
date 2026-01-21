@@ -1,11 +1,18 @@
 enum MoveClassification {
   best,
+  great,
   excellent,
   good,
   inaccuracy,
   mistake,
+  miss,
   blunder,
   brilliant,
+}
+
+enum MoveTag {
+  forced,
+  onlyMove,
 }
 
 class MoveAnalysis {
@@ -17,6 +24,7 @@ class MoveAnalysis {
   final double centipawnLoss;
   final String bestMove;
   final MoveClassification classification;
+  final List<MoveTag> tags;
   final List<String>? engineLine;
 
   MoveAnalysis({
@@ -28,6 +36,7 @@ class MoveAnalysis {
     required this.centipawnLoss,
     required this.bestMove,
     required this.classification,
+    this.tags = const [],
     this.engineLine,
   });
 }

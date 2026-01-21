@@ -27,20 +27,39 @@ class AnalysisService {
       final playedSan = moves[i];
       final playerIsWhite = i % 2 == 0;
 
-      // 1) Analyze the current position once (best move + eval with best play)
-      final before = await _engineService.analyzePosition(
+      final legalMovesCount = game.moves().length;
+
+      // 1) Analyze the current position (MultiPV=2) so we can tag Only-move.
+      final beforePvs = await _engineService.analyzeMultiPvPosition(
         fenBefore,
         timePerMove,
+        multiPv: 2,
       );
-      if (before == null) {
+      if (beforePvs == null || beforePvs.isEmpty) {
         // Still advance the game if possible
         game.move(playedSan);
         continue;
       }
 
-      final bestUci = (before['bestmove'] as String?) ?? '';
-      final evalBeforeForPlayer = _evalFromEngineResult(before, playerIsWhite);
+      final bestUci = (beforePvs[0]['uci'] as String?) ?? '';
+      final secondUci = beforePvs.length > 1 ? (beforePvs[1]['uci'] as String?) : null;
+      final evalBeforeForPlayer = _evalFromEngineResult(beforePvs[0], playerIsWhite);
       final materialBefore = _materialFromFen(fenBefore, playerIsWhite);
+
+      final tags = <MoveTag>[];
+      if (legalMovesCount == 1) {
+        tags.add(MoveTag.forced);
+      }
+      if (legalMovesCount > 1 && secondUci != null && secondUci.isNotEmpty) {
+        final bestEval = _evalFromEngineResult(beforePvs[0], playerIsWhite);
+        final secondEval = _evalFromEngineResult(beforePvs[1], playerIsWhite);
+        final gap = bestEval - secondEval;
+        final bestIsMateWin = bestEval >= 9500;
+        final secondIsNotMateWin = secondEval < 9000;
+        if (gap >= 150 || (bestIsMateWin && secondIsNotMateWin)) {
+          tags.add(MoveTag.onlyMove);
+        }
+      }
 
       // 2) Play the user's move (SAN) and evaluate the resulting position
       final playedOk = game.move(playedSan);
@@ -104,7 +123,7 @@ class AnalysisService {
       final centipawnLoss = (evalAfterBestForPlayer - evalAfterPlayedForPlayer)
           .clamp(0.0, double.infinity);
 
-      final classification = _classifyLikeChessCom(
+      var classification = _classifyLikeChessCom(
         centipawnLoss: centipawnLoss,
         playerEvalBefore: evalBeforeForPlayer,
         playerEvalAfter: evalAfterPlayedForPlayer,
@@ -112,6 +131,32 @@ class AnalysisService {
         isBestMove: playedUci != null && playedUci == bestUci,
         materialDelta: materialDelta,
       );
+
+      // Human-like overrides (primary label), tags remain secondary.
+      final isBestMove = playedUci != null && playedUci == bestUci;
+      final nearBest = centipawnLoss <= 10;
+      final evalSwing = evalAfterPlayedForPlayer - evalBeforeForPlayer;
+      final onlyMoveTag = tags.contains(MoveTag.onlyMove);
+
+      // Great: best/near-best in a critical moment (only move or large positive swing / save).
+      if (classification != MoveClassification.brilliant && (isBestMove || nearBest)) {
+        final savesPosition =
+            evalBeforeForPlayer <= -200 && evalAfterPlayedForPlayer >= -50;
+        final bigSwing = evalSwing >= 200;
+        if (onlyMoveTag || bigSwing || savesPosition) {
+          classification = MoveClassification.great;
+        }
+      }
+
+      // Miss: best line was strong but we failed to find it.
+      // Keep it distinct from pure blunders (tunable).
+      if (classification != MoveClassification.brilliant && !isBestMove) {
+        final bestWasStrong = evalAfterBestForPlayer >= 200 || evalAfterBestForPlayer >= 9500;
+        final weDidntGetCrushed = evalAfterPlayedForPlayer > -800;
+        if (bestWasStrong && centipawnLoss >= 200 && weDidntGetCrushed) {
+          classification = MoveClassification.miss;
+        }
+      }
 
       moveAnalyses.add(
         MoveAnalysis(
@@ -123,6 +168,7 @@ class AnalysisService {
           centipawnLoss: centipawnLoss,
           bestMove: bestUci,
           classification: classification,
+          tags: tags,
         ),
       );
     }

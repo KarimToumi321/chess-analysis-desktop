@@ -156,10 +156,7 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
                           setState(() => _analysisTimeMs = value);
                         },
                         dropdownMenuEntries: const [
-                          DropdownMenuEntry(
-                            value: 250,
-                            label: '0.25s (Fast)',
-                          ),
+                          DropdownMenuEntry(value: 250, label: '0.25s (Fast)'),
                           DropdownMenuEntry(
                             value: 500,
                             label: '0.50s (Accurate)',

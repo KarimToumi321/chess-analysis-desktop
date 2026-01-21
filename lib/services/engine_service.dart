@@ -199,39 +199,75 @@ class EngineService {
     String fen,
     Duration timePerMove,
   ) async {
+    final list = await analyzeMultiPvPosition(
+      fen,
+      timePerMove,
+      multiPv: 1,
+    );
+    if (list == null || list.isEmpty) return null;
+
+    // Back-compat shape used throughout the app.
+    final first = Map<String, dynamic>.from(list.first);
+    final uci = first['uci'];
+    if (uci is String && uci.isNotEmpty) {
+      first['bestmove'] = uci;
+    }
+    return first;
+  }
+
+  Future<List<Map<String, dynamic>>?> analyzeMultiPvPosition(
+    String fen,
+    Duration timePerMove, {
+    int multiPv = 2,
+  }) async {
     if (_process == null) {
       _log('❌ Cannot analyze: Engine not running');
       return null;
     }
+    if (multiPv < 1) multiPv = 1;
 
-    _log('🔍 Analyzing position (time: ${timePerMove.inMilliseconds}ms)');
+    _log(
+      '🔍 Analyzing position (time: ${timePerMove.inMilliseconds}ms, multiPV: $multiPv)',
+    );
+
     _send('ucinewgame');
+    _send('setoption name MultiPV value $multiPv');
+    _send('isready');
+    try {
+      await _waitFor('readyok', timeout: const Duration(seconds: 2));
+    } catch (_) {
+      // Non-fatal; some engines respond slowly.
+    }
+
     _send('position fen $fen');
     _send('go movetime ${timePerMove.inMilliseconds}');
 
     try {
-      String? lastInfoWithScore;
-      String? bestMove;
-
+      final resultsByIndex = <int, Map<String, dynamic>>{};
       final completer = Completer<void>();
       late StreamSubscription<String> subscription;
 
       subscription = lines.listen((line) {
         if (line.startsWith('info') && line.contains('score')) {
-          lastInfoWithScore = line;
+          final parsed = _parseMultiPvInfo(line);
+          if (parsed == null) return;
+          final pvIndex = parsed['multipv'] as int;
+          final entry = <String, dynamic>{
+            'multipv': pvIndex,
+            'uci': parsed['uci'],
+            if (parsed.containsKey('cp')) 'cp': parsed['cp'],
+            if (parsed.containsKey('mate')) 'mate': parsed['mate'],
+            if (parsed.containsKey('pv')) 'pv': parsed['pv'],
+          };
+          // Keep updating the latest entry for each PV.
+          resultsByIndex[pvIndex] = entry;
         } else if (line.startsWith('bestmove')) {
-          final parts = line.split(' ');
-          final index = parts.indexOf('bestmove');
-          if (index >= 0 && index + 1 < parts.length) {
-            bestMove = parts[index + 1];
-          }
           if (!completer.isCompleted) {
             completer.complete();
           }
         }
       });
 
-      // Wait for bestmove with timeout
       await completer.future.timeout(
         timePerMove + const Duration(seconds: 2),
         onTimeout: () {
@@ -241,23 +277,54 @@ class EngineService {
 
       await subscription.cancel();
 
-      // Combine results
-      final result = <String, dynamic>{};
-      if (bestMove != null) {
-        result['bestmove'] = bestMove;
-      }
-      if (lastInfoWithScore != null) {
-        final score = _parseScore(lastInfoWithScore!);
-        if (score != null) {
-          result.addAll(score);
-        }
-      }
+      // Reset MultiPV to 1 for normal single-PV calls.
+      _send('setoption name MultiPV value 1');
 
-      return result.isNotEmpty ? result : null;
+      final list = <Map<String, dynamic>>[];
+      for (var i = 1; i <= multiPv; i++) {
+        final entry = resultsByIndex[i];
+        if (entry != null) list.add(entry);
+      }
+      return list.isNotEmpty ? list : null;
     } catch (e) {
       _log('❌ Error analyzing position: $e');
       return null;
     }
+  }
+
+  Map<String, dynamic>? _parseMultiPvInfo(String infoLine) {
+    // Typical: info depth 18 seldepth 26 multipv 2 score cp -34 ... pv e2e4 e7e5 ...
+    final parts = infoLine.split(' ');
+
+    var pvIndex = 1;
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] == 'multipv' && i + 1 < parts.length) {
+        pvIndex = int.tryParse(parts[i + 1]) ?? 1;
+        break;
+      }
+    }
+
+    String? firstMove;
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i] == 'pv' && i + 1 < parts.length) {
+        firstMove = parts[i + 1];
+        break;
+      }
+    }
+
+    final score = _parseScore(infoLine);
+    if (score == null || firstMove == null) return null;
+
+    // Keep PV string (optional, can be used later for variations).
+    final pvStart = parts.indexOf('pv');
+    final pv = pvStart >= 0 ? parts.sublist(pvStart + 1).join(' ') : null;
+
+    return {
+      'multipv': pvIndex,
+      'uci': firstMove,
+      ...score,
+      if (pv != null && pv.isNotEmpty) 'pv': pv,
+    };
   }
 
   Future<Map<String, dynamic>?> getBestMove(
