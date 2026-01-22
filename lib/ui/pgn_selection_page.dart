@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../state/chess_controller.dart';
 import '../state/engine_controller.dart';
 import '../services/analysis_service.dart';
+import '../models/move_labeling.dart';
 import 'analysis_page.dart';
 
 class PgnSelectionPage extends StatefulWidget {
@@ -19,6 +20,7 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
   String _fileName = '';
   bool _analyzeWithEngine = false;
   int _analysisTimeMs = 500;
+  MoveLabelHarshness _moveLabelHarshness = MoveLabelHarshness.normal;
 
   @override
   void initState() {
@@ -165,6 +167,38 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
                             value: 1000,
                             label: '1.00s (Very accurate)',
                           ),
+                          DropdownMenuEntry(value: 3000, label: '3.00s (Deep)'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownMenu<MoveLabelHarshness>(
+                        initialSelection: _moveLabelHarshness,
+                        label: const Text('Move labeling harshness'),
+                        onSelected: (value) {
+                          if (value == null) return;
+                          setState(() => _moveLabelHarshness = value);
+                        },
+                        dropdownMenuEntries: const [
+                          DropdownMenuEntry(
+                            value: MoveLabelHarshness.easy,
+                            label: 'Easy (forgiving)',
+                          ),
+                          DropdownMenuEntry(
+                            value: MoveLabelHarshness.normal,
+                            label: 'Normal',
+                          ),
+                          DropdownMenuEntry(
+                            value: MoveLabelHarshness.harsh,
+                            label: 'Harsh',
+                          ),
+                          DropdownMenuEntry(
+                            value: MoveLabelHarshness.extreme,
+                            label: 'Extreme',
+                          ),
+                          DropdownMenuEntry(
+                            value: MoveLabelHarshness.crazyHarsh,
+                            label: 'Crazy harsh',
+                          ),
                         ],
                       ),
                     ],
@@ -242,6 +276,11 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
 
   void _startAnalysis() async {
     final chess = context.read<ChessController>();
+    chess.setAnalysisSettings(
+      analyzeWithEngine: _analyzeWithEngine,
+      timePerMove: Duration(milliseconds: _analysisTimeMs),
+      moveLabelHarshness: _moveLabelHarshness,
+    );
     chess.loadPgn(_pgnController.text.trim());
 
     // Start analysis if requested
@@ -287,6 +326,7 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
         analysisService: analysisService,
         moves: chess.moves,
         timePerMove: Duration(milliseconds: _analysisTimeMs),
+        harshness: _moveLabelHarshness,
         onComplete: (analysis) {
           chess.setGameAnalysis(analysis);
         },
@@ -298,6 +338,11 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
 
   void _startWithEmptyPosition() {
     final chess = context.read<ChessController>();
+    chess.setAnalysisSettings(
+      analyzeWithEngine: false,
+      timePerMove: const Duration(milliseconds: 500),
+      moveLabelHarshness: MoveLabelHarshness.normal,
+    );
     chess.loadPgn('');
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const AnalysisPage()),
@@ -309,12 +354,14 @@ class _AnalysisProgressDialog extends StatefulWidget {
   final AnalysisService analysisService;
   final List<String> moves;
   final Duration timePerMove;
+  final MoveLabelHarshness harshness;
   final Function(dynamic) onComplete;
 
   const _AnalysisProgressDialog({
     required this.analysisService,
     required this.moves,
     required this.timePerMove,
+    required this.harshness,
     required this.onComplete,
   });
 
@@ -341,6 +388,7 @@ class _AnalysisProgressDialogState extends State<_AnalysisProgressDialog> {
         moves: widget.moves,
         startingFen: '',
         timePerMove: widget.timePerMove,
+        harshness: widget.harshness,
         onProgress: (current, total) {
           if (mounted) {
             setState(() {

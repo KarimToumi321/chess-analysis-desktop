@@ -4,6 +4,7 @@ import 'package:chess/chess.dart' as chess;
 import '../utils/pgn_parser.dart';
 import '../models/variation.dart';
 import '../models/move_analysis.dart';
+import '../models/move_labeling.dart';
 import '../ui/interactive_board_view.dart';
 
 class ChessController extends ChangeNotifier {
@@ -15,6 +16,14 @@ class ChessController extends ChangeNotifier {
 
   // Analysis support
   GameAnalysis? _gameAnalysis;
+
+  // Engine analysis settings (mirrors PGN selection UI)
+  bool _analyzeWithEngine = false;
+  Duration _analysisTimePerMove = const Duration(milliseconds: 500);
+  MoveLabelHarshness _moveLabelHarshness = MoveLabelHarshness.normal;
+
+  // Move analysis cache keyed by (fenBefore|san) so side lines can be labeled.
+  final Map<String, MoveAnalysis> _moveAnalysisByKey = {};
 
   // Variation support
   GameTree _gameTree = GameTree(
@@ -42,6 +51,10 @@ class ChessController extends ChangeNotifier {
   Variation get currentVariation => _gameTree.currentVariation;
   GameAnalysis? get gameAnalysis => _gameAnalysis;
 
+  bool get analyzeWithEngine => _analyzeWithEngine;
+  Duration get analysisTimePerMove => _analysisTimePerMove;
+  MoveLabelHarshness get moveLabelHarshness => _moveLabelHarshness;
+
   String get fen => _readFen();
 
   List<Arrow> getArrowsForCurrentPosition() {
@@ -66,6 +79,8 @@ class ChessController extends ChangeNotifier {
       _moves = <String>[];
       _currentIndex = 0;
       _game = chess.Chess();
+      _gameAnalysis = null;
+      _moveAnalysisByKey.clear();
       _gameTree = GameTree(
         variations: {
           'main': Variation(
@@ -99,6 +114,10 @@ class ChessController extends ChangeNotifier {
     );
     _variationCounter = 0;
 
+    // Reset analysis state when loading a new PGN
+    _gameAnalysis = null;
+    _moveAnalysisByKey.clear();
+
     _rebuildGame();
   }
 
@@ -108,6 +127,8 @@ class ChessController extends ChangeNotifier {
     _pgnText = '';
     _currentIndex = 0;
     _game = chess.Chess();
+    _gameAnalysis = null;
+    _moveAnalysisByKey.clear();
     _gameTree = GameTree(
       variations: {
         'main': Variation(
@@ -125,6 +146,59 @@ class ChessController extends ChangeNotifier {
       _error = 'Invalid FEN.';
     }
     notifyListeners();
+  }
+
+  void setAnalysisSettings({
+    required bool analyzeWithEngine,
+    required Duration timePerMove,
+    MoveLabelHarshness moveLabelHarshness = MoveLabelHarshness.normal,
+  }) {
+    _analyzeWithEngine = analyzeWithEngine;
+    _analysisTimePerMove = timePerMove;
+    _moveLabelHarshness = moveLabelHarshness;
+    notifyListeners();
+  }
+
+  void upsertMoveAnalysis(MoveAnalysis analysis) {
+    final key = _analysisKey(fenBefore: analysis.fen, san: analysis.move);
+    _moveAnalysisByKey[key] = analysis;
+    notifyListeners();
+  }
+
+  MoveAnalysis? getMoveAnalysisForMoveIndex(int moveIndex) {
+    if (moveIndex < 0 || moveIndex >= _moves.length) return null;
+
+    final fenBefore = _fenAtPly(moveIndex);
+    final san = _moves[moveIndex];
+    final key = _analysisKey(fenBefore: fenBefore, san: san);
+    final cached = _moveAnalysisByKey[key];
+    if (cached != null) return cached;
+
+    final ga = _gameAnalysis;
+    if (ga == null) return null;
+    final fromGa = ga.getMoveAnalysis(moveIndex);
+    if (fromGa == null) return null;
+    // Only use GameAnalysis result if it matches this exact position+move
+    if (fromGa.fen == fenBefore && fromGa.move == san) return fromGa;
+    return null;
+  }
+
+  String getFenBeforeMoveIndex(int moveIndex) {
+    return _fenAtPly(moveIndex);
+  }
+
+  String _analysisKey({required String fenBefore, required String san}) {
+    return '$fenBefore|$san';
+  }
+
+  String _fenAtPly(int plyCount) {
+    final g = chess.Chess();
+    final limit = plyCount.clamp(0, _moves.length);
+    for (var i = 0; i < limit; i += 1) {
+      final ok = g.move(_moves[i]);
+      if (ok == false) break;
+    }
+    return g.fen;
   }
 
   void goToStart() {
@@ -556,6 +630,14 @@ class ChessController extends ChangeNotifier {
 
   void setGameAnalysis(GameAnalysis? analysis) {
     _gameAnalysis = analysis;
+
+    // Seed cache for quick lookup (and for validation against variations).
+    _moveAnalysisByKey.clear();
+    if (analysis != null) {
+      for (final ma in analysis.moves) {
+        _moveAnalysisByKey[_analysisKey(fenBefore: ma.fen, san: ma.move)] = ma;
+      }
+    }
     notifyListeners();
   }
 

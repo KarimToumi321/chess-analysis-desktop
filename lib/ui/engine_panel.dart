@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../state/engine_controller.dart';
 import '../state/chess_controller.dart';
+import '../services/analysis_service.dart';
+import '../models/move_analysis.dart';
 
 class EnginePanel extends StatefulWidget {
   const EnginePanel({super.key});
@@ -15,6 +18,95 @@ class EnginePanel extends StatefulWidget {
 class _EnginePanelState extends State<EnginePanel> {
   final TextEditingController _enginePath = TextEditingController();
   bool _showLogs = false;
+
+  Future<void> _analyzeAndLabel(
+    ChessController chess,
+    EngineController engine,
+  ) async {
+    // Keep existing behavior (position evaluation) and add a move label.
+    // Stop any running analysis to avoid interleaving UCI commands.
+    if (engine.isAnalyzing) {
+      engine.stopAnalysis();
+    }
+
+    final moveIndex = chess.currentIndex - 1;
+    if (moveIndex < 0 || moveIndex >= chess.moves.length) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No move to classify at start position.'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      await engine.ensureEngineReady();
+      final analysisService = AnalysisService(engine.engineService);
+      final fenBefore = chess.getFenBeforeMoveIndex(moveIndex);
+      final playedSan = chess.moves[moveIndex];
+
+      final ma = await analysisService.analyzeSingleMove(
+        fenBefore: fenBefore,
+        playedSan: playedSan,
+        moveNumber: moveIndex + 1,
+        timePerMove: chess.analysisTimePerMove,
+        harshness: chess.moveLabelHarshness,
+        debugLog: (m) {
+          if (kDebugMode) debugPrint(m);
+        },
+      );
+
+      if (ma != null) {
+        chess.upsertMoveAnalysis(ma);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Move labeled: ${_labelFor(ma.classification)}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Engine classification failed: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      // Start the live analysis after labeling (sequential).
+      if (!engine.isBusy) {
+        engine.analyzePosition(chess.fen);
+      }
+    }
+  }
+
+  String _labelFor(MoveClassification c) {
+    switch (c) {
+      case MoveClassification.best:
+        return 'Best';
+      case MoveClassification.great:
+        return 'Great';
+      case MoveClassification.excellent:
+        return 'Excellent';
+      case MoveClassification.good:
+        return 'Good';
+      case MoveClassification.inaccuracy:
+        return 'Inaccuracy';
+      case MoveClassification.mistake:
+        return 'Mistake';
+      case MoveClassification.miss:
+        return 'Miss';
+      case MoveClassification.blunder:
+        return 'Blunder';
+    }
+  }
 
   @override
   void dispose() {
@@ -80,7 +172,7 @@ class _EnginePanelState extends State<EnginePanel> {
                   child: ElevatedButton.icon(
                     onPressed: engine.isBusy
                         ? null
-                        : () => engine.analyzePosition(chess.fen),
+                        : () => _analyzeAndLabel(chess, engine),
                     icon: engine.isAnalyzing
                         ? const SizedBox(
                             width: 16,

@@ -127,6 +127,7 @@ class _HomePageState extends State<HomePage> {
               moves: chess.moves,
               currentIndex: chess.currentIndex,
               onSelect: chess.setIndex,
+              moveAnalysisProvider: chess.getMoveAnalysisForMoveIndex,
             ),
           ),
         ),

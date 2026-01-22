@@ -9,6 +9,7 @@ class MoveList extends StatelessWidget {
     required this.onSelect,
     this.onCreateVariation,
     this.gameAnalysis,
+    this.moveAnalysisProvider,
   });
 
   final List<String> moves;
@@ -16,6 +17,7 @@ class MoveList extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final VoidCallback? onCreateVariation;
   final GameAnalysis? gameAnalysis;
+  final MoveAnalysis? Function(int index)? moveAnalysisProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +75,9 @@ class MoveList extends StatelessWidget {
               final prefix = index.isEven ? '$moveNo.' : '...';
 
               // Get move analysis if available
-              final moveAnalysis = gameAnalysis?.getMoveAnalysis(index);
+              final moveAnalysis =
+                  moveAnalysisProvider?.call(index) ??
+                  gameAnalysis?.getMoveAnalysis(index);
 
               return ListTile(
                 dense: true,

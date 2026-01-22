@@ -256,9 +256,6 @@ class EngineController extends ChangeNotifier {
       }
 
       _currentEvaluation = evaluation;
-      print(
-        '📊 Eval: ${evaluation.toStringAsFixed(2)} (depth: $_currentDepth)',
-      );
       return;
     }
 
@@ -274,7 +271,6 @@ class EngineController extends ChangeNotifier {
       }
 
       _currentEvaluation = evaluation;
-      print('♔ Mate in $mateIn moves detected');
     }
   }
 
@@ -293,7 +289,6 @@ class EngineController extends ChangeNotifier {
       final move = parts[index + 1];
       if (move != '(none)') {
         _lastBestMove = move;
-        print('✓ Best move updated: $move');
       }
     }
   }

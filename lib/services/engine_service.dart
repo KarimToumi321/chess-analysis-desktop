@@ -199,11 +199,7 @@ class EngineService {
     String fen,
     Duration timePerMove,
   ) async {
-    final list = await analyzeMultiPvPosition(
-      fen,
-      timePerMove,
-      multiPv: 1,
-    );
+    final list = await analyzeMultiPvPosition(fen, timePerMove, multiPv: 1);
     if (list == null || list.isEmpty) return null;
 
     // Back-compat shape used throughout the app.

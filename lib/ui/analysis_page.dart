@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../state/chess_controller.dart';
 import '../state/engine_controller.dart';
+import '../models/move_analysis.dart';
+import '../services/analysis_service.dart';
 import 'interactive_board_view.dart';
 import 'move_list.dart';
 import 'engine_panel.dart';
@@ -21,6 +24,105 @@ class AnalysisPage extends StatefulWidget {
 class _AnalysisPageState extends State<AnalysisPage> {
   final FocusNode _focusNode = FocusNode();
   bool _boardFlipped = false;
+
+  Future<void> _analyzeAndLabel(
+    ChessController chess,
+    EngineController engine,
+  ) async {
+    final moveIndex = chess.currentIndex - 1;
+    if (moveIndex < 0 || moveIndex >= chess.moves.length) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No move to classify at start position.'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      // Ensure we are not interleaving UCI commands from multiple analyses.
+      if (engine.isAnalyzing) {
+        engine.stopAnalysis();
+      }
+      await engine.ensureEngineReady();
+      final analysisService = AnalysisService(engine.engineService);
+
+      final fenBefore = chess.getFenBeforeMoveIndex(moveIndex);
+      final playedSan = chess.moves[moveIndex];
+      final ma = await analysisService.analyzeSingleMove(
+        fenBefore: fenBefore,
+        playedSan: playedSan,
+        moveNumber: moveIndex + 1,
+        timePerMove: chess.analysisTimePerMove,
+        harshness: chess.moveLabelHarshness,
+        debugLog: (m) {
+          if (kDebugMode) debugPrint(m);
+        },
+      );
+
+      if (ma == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not classify this move.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      chess.upsertMoveAnalysis(ma);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Move labeled: ${_labelFor(ma.classification)}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Start/update the live evaluation for the current position afterwards.
+      // This keeps labeling consistent and avoids interleaving engine commands.
+      if (!engine.isBusy) {
+        // Do not await (long-running UI feature).
+        engine.analyzePosition(chess.fen);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Engine classification failed: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  String _labelFor(MoveClassification c) {
+    switch (c) {
+      case MoveClassification.best:
+        return 'Best';
+      case MoveClassification.great:
+        return 'Great';
+      case MoveClassification.excellent:
+        return 'Excellent';
+      case MoveClassification.good:
+        return 'Good';
+      case MoveClassification.inaccuracy:
+        return 'Inaccuracy';
+      case MoveClassification.mistake:
+        return 'Mistake';
+      case MoveClassification.miss:
+        return 'Miss';
+      case MoveClassification.blunder:
+        return 'Blunder';
+    }
+  }
 
   @override
   void initState() {
@@ -132,7 +234,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                 tooltip: 'Analyze position',
                 onPressed: engine.isBusy
                     ? null
-                    : () => engine.analyzePosition(chess.fen),
+                    : () => _analyzeAndLabel(chess, engine),
                 icon: const Icon(Icons.analytics_outlined),
               ),
             IconButton(
@@ -478,6 +580,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
               onCreateVariation: () =>
                   _showCreateVariationDialog(context, chess),
               gameAnalysis: chess.gameAnalysis,
+              moveAnalysisProvider: chess.getMoveAnalysisForMoveIndex,
             ),
           ),
         ],
