@@ -7,13 +7,9 @@ enum MoveClassification {
   mistake,
   miss,
   blunder,
-  brilliant,
 }
 
-enum MoveTag {
-  forced,
-  onlyMove,
-}
+enum MoveTag { forced, onlyMove }
 
 class MoveAnalysis {
   final int moveNumber;

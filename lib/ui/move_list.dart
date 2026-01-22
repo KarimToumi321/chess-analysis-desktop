@@ -171,7 +171,7 @@ class _ClassificationBadge extends StatelessWidget {
       case MoveClassification.best:
         return _BadgeConfig('Best', Colors.green.shade700);
       case MoveClassification.great:
-        return _BadgeConfig('Great', Colors.purple.shade700);
+        return _BadgeConfig('Great', Colors.green.shade600);
       case MoveClassification.excellent:
         return _BadgeConfig('Exc', Colors.green.shade600);
       case MoveClassification.good:
@@ -184,8 +184,6 @@ class _ClassificationBadge extends StatelessWidget {
         return _BadgeConfig('Miss', Colors.blueGrey.shade700);
       case MoveClassification.blunder:
         return _BadgeConfig('??', Colors.red.shade700);
-      case MoveClassification.brilliant:
-        return _BadgeConfig('!!', Colors.cyan.shade700);
     }
   }
 }
