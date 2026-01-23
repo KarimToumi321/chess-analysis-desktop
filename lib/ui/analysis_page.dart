@@ -142,6 +142,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
   Widget build(BuildContext context) {
     final chess = context.watch<ChessController>();
     final engine = context.watch<EngineController>();
+    final positionEvaluation = _resolveEvaluation(chess, engine);
 
     return KeyboardListener(
       focusNode: _focusNode,
@@ -198,7 +199,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                   ),
                 ),
               ],
-              if (engine.currentEvaluation != null) ...[
+              if (positionEvaluation != null) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -210,7 +211,7 @@ class _AnalysisPageState extends State<AnalysisPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    _formatEvalDisplay(engine.currentEvaluation!),
+                    _formatEvalDisplay(positionEvaluation),
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -249,9 +250,19 @@ class _AnalysisPageState extends State<AnalysisPage> {
             final isWide = constraints.maxWidth >= 1000;
 
             if (isWide) {
-              return _buildWideLayout(context, chess, engine);
+              return _buildWideLayout(
+                context,
+                chess,
+                engine,
+                positionEvaluation,
+              );
             } else {
-              return _buildNarrowLayout(context, chess, engine);
+              return _buildNarrowLayout(
+                context,
+                chess,
+                engine,
+                positionEvaluation,
+              );
             }
           },
         ),
@@ -263,13 +274,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
     BuildContext context,
     ChessController chess,
     EngineController engine,
+    double? positionEvaluation,
   ) {
     return Row(
       children: [
         // Evaluation bar
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
-          child: EvaluationBar(evaluation: engine.currentEvaluation),
+          child: EvaluationBar(evaluation: positionEvaluation),
         ),
         // Left side - Board and controls
         Expanded(
@@ -350,13 +362,14 @@ class _AnalysisPageState extends State<AnalysisPage> {
     BuildContext context,
     ChessController chess,
     EngineController engine,
+    double? positionEvaluation,
   ) {
     return Row(
       children: [
         // Evaluation bar
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
-          child: EvaluationBar(evaluation: engine.currentEvaluation),
+          child: EvaluationBar(evaluation: positionEvaluation),
         ),
         // Main content
         Expanded(
@@ -669,6 +682,13 @@ class _AnalysisPageState extends State<AnalysisPage> {
         ],
       ),
     );
+  }
+
+  double? _resolveEvaluation(ChessController chess, EngineController engine) {
+    if (engine.isAnalyzing && engine.currentEvaluation != null) {
+      return engine.currentEvaluation;
+    }
+    return chess.evaluationForCurrentPosition ?? engine.currentEvaluation;
   }
 
   String _formatEvalDisplay(double pawns) {

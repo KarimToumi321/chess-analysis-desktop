@@ -25,6 +25,9 @@ class ChessController extends ChangeNotifier {
   // Move analysis cache keyed by (fenBefore|san) so side lines can be labeled.
   final Map<String, MoveAnalysis> _moveAnalysisByKey = {};
 
+  // Cached evaluations (white perspective, in pawns) keyed by FEN.
+  final Map<String, double> _evaluationByFen = {};
+
   // Variation support
   GameTree _gameTree = GameTree(
     variations: {
@@ -50,6 +53,7 @@ class ChessController extends ChangeNotifier {
   GameTree get gameTree => _gameTree;
   Variation get currentVariation => _gameTree.currentVariation;
   GameAnalysis? get gameAnalysis => _gameAnalysis;
+  double? get evaluationForCurrentPosition => _evaluationByFen[fen];
 
   bool get analyzeWithEngine => _analyzeWithEngine;
   Duration get analysisTimePerMove => _analysisTimePerMove;
@@ -81,6 +85,7 @@ class ChessController extends ChangeNotifier {
       _game = chess.Chess();
       _gameAnalysis = null;
       _moveAnalysisByKey.clear();
+      _evaluationByFen.clear();
       _gameTree = GameTree(
         variations: {
           'main': Variation(
@@ -117,6 +122,7 @@ class ChessController extends ChangeNotifier {
     // Reset analysis state when loading a new PGN
     _gameAnalysis = null;
     _moveAnalysisByKey.clear();
+    _evaluationByFen.clear();
 
     _rebuildGame();
   }
@@ -129,6 +135,7 @@ class ChessController extends ChangeNotifier {
     _game = chess.Chess();
     _gameAnalysis = null;
     _moveAnalysisByKey.clear();
+    _evaluationByFen.clear();
     _gameTree = GameTree(
       variations: {
         'main': Variation(
@@ -633,12 +640,61 @@ class ChessController extends ChangeNotifier {
 
     // Seed cache for quick lookup (and for validation against variations).
     _moveAnalysisByKey.clear();
+    _evaluationByFen.clear();
+
     if (analysis != null) {
       for (final ma in analysis.moves) {
         _moveAnalysisByKey[_analysisKey(fenBefore: ma.fen, san: ma.move)] = ma;
+
+        final playerIsWhite = _sideToMoveIsWhite(ma.fen);
+        _recordEvaluationForFen(
+          ma.fen,
+          ma.evalBefore,
+          playerIsWhite: playerIsWhite,
+        );
+
+        try {
+          final position = chess.Chess.fromFEN(ma.fen);
+          final applied = position.move(ma.move);
+          if (applied != false) {
+            _recordEvaluationForFen(
+              position.fen,
+              ma.evalAfter,
+              playerIsWhite: playerIsWhite,
+            );
+          }
+        } catch (_) {
+          // If replay fails, skip storing the "after" evaluation.
+        }
       }
     }
     notifyListeners();
+  }
+
+  void _recordEvaluationForFen(
+    String fen,
+    double playerEval, {
+    required bool playerIsWhite,
+  }) {
+    // Store once per unique position; evaluation is white-perspective in pawns.
+    if (_evaluationByFen.containsKey(fen)) return;
+    _evaluationByFen[fen] = _whitePawnsFromPlayerEval(
+      playerEval,
+      playerIsWhite: playerIsWhite,
+    );
+  }
+
+  double _whitePawnsFromPlayerEval(
+    double playerEval, {
+    required bool playerIsWhite,
+  }) {
+    final whiteCentipawns = playerIsWhite ? playerEval : -playerEval;
+    return whiteCentipawns / 100.0;
+  }
+
+  bool _sideToMoveIsWhite(String fen) {
+    final parts = fen.split(' ');
+    return parts.length > 1 ? parts[1] == 'w' : true;
   }
 
   String _readFen() {

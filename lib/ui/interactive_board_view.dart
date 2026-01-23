@@ -81,7 +81,7 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
     _updateChessEngine();
 
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 300),
       vsync: this,
     );
 

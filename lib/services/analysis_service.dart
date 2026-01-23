@@ -343,6 +343,18 @@ class AnalysisService {
       final centipawnLoss = (evalAfterBestForPlayer - evalAfterPlayedForPlayer)
           .clamp(0.0, double.infinity);
 
+      // Debug-only: print black centipawn deltas in a readable format.
+      if ((i + 1) % 2 == 0) {
+        final moveNo = (i ~/ 2) + 1;
+        // Values are player-perspective (here: black). Positive = good for black.
+        print(
+          '[BLACK m$moveNo] best=${evalAfterBestForPlayer.toStringAsFixed(1)} '
+          'played=${evalAfterPlayedForPlayer.toStringAsFixed(1)} '
+          'loss=${centipawnLoss.toStringAsFixed(1)} '
+          'fen=$fenBefore',
+        );
+      }
+
       final thresholds =
           MoveLabelingThresholds.byHarshness[harshness] ??
           MoveLabelingThresholds.normal;
