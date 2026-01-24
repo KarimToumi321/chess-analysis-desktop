@@ -796,6 +796,15 @@ class ChessController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void storeEvaluation(
+    String fen,
+    double evaluation, {
+    required bool forWhite,
+  }) {
+    _recordEvaluationForFen(fen, evaluation, playerIsWhite: forWhite);
+    notifyListeners();
+  }
+
   void _recordEvaluationForFen(
     String fen,
     double playerEval, {
@@ -816,6 +825,8 @@ class ChessController extends ChangeNotifier {
     final whiteCentipawns = playerIsWhite ? playerEval : -playerEval;
     return whiteCentipawns / 100.0;
   }
+
+  bool sideToMoveIsWhite(String fen) => _sideToMoveIsWhite(fen);
 
   bool _sideToMoveIsWhite(String fen) {
     final parts = fen.split(' ');
