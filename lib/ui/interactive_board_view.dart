@@ -209,6 +209,10 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
   Widget build(BuildContext context) {
     final squares = _boardFromFen(widget.fen);
 
+    print(
+      '[DISPLAY ICON] InteractiveBoardView.build - moveAnalysis: ${widget.moveAnalysis?.classification}, lastMoveTo: ${widget.lastMoveTo}',
+    );
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final availableSize = constraints.maxWidth.isFinite
@@ -352,19 +356,6 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                                       Container(
                                         color: Colors.blue.withOpacity(0.3),
                                       ),
-                                    // Move label icon overlay
-                                    if (widget.moveAnalysis != null &&
-                                        widget.lastMoveTo == square)
-                                      Positioned(
-                                        top: 2,
-                                        right: 2,
-                                        child: MoveLabelIcon(
-                                          classification: widget
-                                              .moveAnalysis!
-                                              .classification,
-                                          size: squareSize * 0.28,
-                                        ),
-                                      ),
                                     if (rank == 7 || file == 0)
                                       _buildCoordinates(file, rank, isLight),
                                     if (piece != null &&
@@ -415,6 +406,13 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                         ),
                       ),
                     ),
+                    // Move label icon overlay - absolute positioned on top
+                    if (widget.moveAnalysis != null &&
+                        widget.lastMoveTo != null)
+                      ..._buildMoveLabelIconOverlayWithLogging(
+                        boardSize,
+                        squareSize,
+                      ),
                   ],
                 ),
               ),
@@ -495,6 +493,50 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
     });
 
     return widgets;
+  }
+
+  List<Widget> _buildMoveLabelIconOverlayWithLogging(
+    double boardSize,
+    double squareSize,
+  ) {
+    print(
+      '[DISPLAY ICON] Condition met - moveAnalysis: ${widget.moveAnalysis?.classification}, lastMoveTo: ${widget.lastMoveTo}',
+    );
+    return [_buildMoveLabelIconOverlay(boardSize, squareSize)];
+  }
+
+  Widget _buildMoveLabelIconOverlay(double boardSize, double squareSize) {
+    final square = widget.lastMoveTo!;
+    final file = square.codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final rank = 8 - int.parse(square[1]);
+
+    final displayFile = widget.flipped ? 7 - file : file;
+    final displayRank = widget.flipped ? 7 - rank : rank;
+
+    // Position centered on top-right corner point, but clamp to board boundaries
+    const iconSize = 36.0;
+    var left = (displayFile + 1) * squareSize - (iconSize / 2);
+    var top = displayRank * squareSize - (iconSize / 2);
+
+    // Prevent cutoff on right edge
+    if (left + iconSize > boardSize) {
+      left = boardSize - iconSize;
+    }
+
+    // Prevent cutoff on top edge
+    if (top < 0) {
+      top = 0;
+    }
+
+    print(
+      '[DISPLAY ICON] Positioning icon at left=$left, top=$top for square=$square (file=$displayFile, rank=$displayRank, squareSize=$squareSize)',
+    );
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: MoveLabelIcon(classification: widget.moveAnalysis!.classification),
+    );
   }
 
   String? _getSquareFromPosition(Offset position, double boardSize) {
@@ -898,6 +940,16 @@ class ArrowPainter extends CustomPainter {
       (displayFile + 0.5) * squareSize,
       (displayRank + 0.5) * squareSize,
     );
+  }
+
+  Offset _getSquareTopRight(String square, double squareSize, bool flipped) {
+    final file = square.codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final rank = 8 - int.parse(square[1]);
+
+    final displayFile = flipped ? 7 - file : file;
+    final displayRank = flipped ? 7 - rank : rank;
+
+    return Offset((displayFile + 1) * squareSize, displayRank * squareSize);
   }
 
   @override

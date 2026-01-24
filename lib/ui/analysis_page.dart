@@ -295,25 +295,35 @@ class _AnalysisPageState extends State<AnalysisPage> {
                   constraints: const BoxConstraints(maxWidth: 600),
                   child: Column(
                     children: [
-                      InteractiveBoardView(
-                        fen: chess.fen,
-                        maxSize: 600,
-                        flipped: _boardFlipped,
-                        arrows: chess.getArrowsForCurrentPosition(),
-                        onArrowsChanged: (arrows) {
-                          chess.setArrowsForCurrentPosition(arrows);
-                        },
-                        moveAnalysis: chess.currentIndex > 0
-                            ? chess.getMoveAnalysisForMoveIndex(
-                                chess.currentIndex - 1,
-                              )
-                            : null,
-                        lastMoveTo: chess.getLastMoveToSquare(),
-                        onMoveMade: ({required from, required to, promotion}) {
-                          return chess.makeMove(
-                            from: from,
-                            to: to,
-                            promotion: promotion,
+                      Builder(
+                        builder: (context) {
+                          final moveAnalysis = chess.currentIndex > 0
+                              ? chess.getMoveAnalysisForMoveIndex(
+                                  chess.currentIndex - 1,
+                                )
+                              : null;
+                          final lastMoveTo = chess.getLastMoveToSquare();
+                          print(
+                            '[ANALYSIS PAGE] Passing to board - moveAnalysis: ${moveAnalysis?.classification}, lastMoveTo: $lastMoveTo, currentIndex: ${chess.currentIndex}',
+                          );
+                          return InteractiveBoardView(
+                            fen: chess.fen,
+                            maxSize: 600,
+                            flipped: _boardFlipped,
+                            arrows: chess.getArrowsForCurrentPosition(),
+                            onArrowsChanged: (arrows) {
+                              chess.setArrowsForCurrentPosition(arrows);
+                            },
+                            moveAnalysis: moveAnalysis,
+                            lastMoveTo: lastMoveTo,
+                            onMoveMade:
+                                ({required from, required to, promotion}) {
+                                  return chess.makeMove(
+                                    from: from,
+                                    to: to,
+                                    promotion: promotion,
+                                  );
+                                },
                           );
                         },
                       ),

@@ -6,7 +6,7 @@ class MoveLabelIcon extends StatelessWidget {
   const MoveLabelIcon({
     super.key,
     required this.classification,
-    this.size = 24.0,
+    this.size = 36.0,
   });
 
   final MoveClassification classification;
@@ -14,6 +14,9 @@ class MoveLabelIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print(
+      '[DISPLAY ICON] MoveLabelIcon.build called with classification=$classification, size=$size',
+    );
     final config = _getLabelConfig(classification);
 
     return Container(
@@ -72,7 +75,7 @@ class MoveLabelIcon extends StatelessWidget {
         );
       case MoveClassification.good:
         return const _LabelConfig(
-          backgroundColor: Color(0xFF03A9F4), // Light blue
+          backgroundColor: Color(0xFFAED581), // Light lime
           symbol: '✓',
           iconColor: Colors.white,
           useIcon: false,

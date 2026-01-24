@@ -225,32 +225,95 @@ class ChessController extends ChangeNotifier {
   }
 
   String? getLastMoveToSquare() {
-    if (_currentIndex == 0) return null;
+    print('[getLastMoveToSquare] Called with _currentIndex=$_currentIndex');
+    if (_currentIndex == 0) {
+      print('[getLastMoveToSquare] Returning null - currentIndex is 0');
+      return null;
+    }
 
     // Get the last move that was played
     final lastMoveIndex = _currentIndex - 1;
-    if (lastMoveIndex < 0 || lastMoveIndex >= _moves.length) return null;
+    if (lastMoveIndex < 0 || lastMoveIndex >= _moves.length) {
+      print(
+        '[getLastMoveToSquare] Returning null - lastMoveIndex=$lastMoveIndex out of bounds (moves.length=${_moves.length})',
+      );
+      return null;
+    }
 
     final san = _moves[lastMoveIndex];
     final fenBefore = _fenAtPly(lastMoveIndex);
+    print(
+      '[getLastMoveToSquare] Processing move index=$lastMoveIndex, san=$san, fenBefore=$fenBefore',
+    );
 
     try {
       final position = chess.Chess.fromFEN(fenBefore);
-      dynamic moveDetail = position.move(san);
+      final moveResult = position.move(san);
+      print(
+        '[getLastMoveToSquare] moveResult type: ${moveResult.runtimeType}, value: $moveResult',
+      );
 
-      // The chess library returns a map with 'to' field, or false on failure
-      if (moveDetail is Map) {
-        final toSquare = moveDetail['to'];
-        if (toSquare is String) {
-          print(
-            '[getLastMoveToSquare] Move ${lastMoveIndex + 1} ($san) -> $toSquare',
-          );
-          return toSquare;
+      // After making the move, get it from history
+      if (moveResult != false) {
+        final history = position.history;
+        print('[getLastMoveToSquare] History: $history');
+        if (history.isNotEmpty) {
+          // History contains SAN strings, we need to parse the destination from SAN
+          // Or we can use the current position's move history differently
+          // Let's try getting the last move details using moves()
+          final moves = position.moves({'verbose': true});
+          print('[getLastMoveToSquare] Available moves after: ${moves.length}');
+
+          // Better approach: parse the SAN to extract destination square
+          final toSquare = _extractToSquareFromSan(san, fenBefore);
+          if (toSquare != null) {
+            print(
+              '[getLastMoveToSquare] Move ${lastMoveIndex + 1} ($san) -> $toSquare',
+            );
+            return toSquare;
+          }
         }
+      } else {
+        print('[getLastMoveToSquare] Move failed');
       }
     } catch (e) {
       print('[getLastMoveToSquare] Error: $e');
       return null;
+    }
+
+    print('[getLastMoveToSquare] Reached end, returning null');
+    return null;
+  }
+
+  String? _extractToSquareFromSan(String san, String fen) {
+    // Remove check/checkmate symbols
+    san = san.replaceAll('+', '').replaceAll('#', '');
+
+    // Handle castling - determine side to move from FEN
+    if (san == 'O-O' || san == 'O-O-O') {
+      // FEN format: position sideToMove castling enPassant halfmove fullmove
+      final fenParts = fen.split(' ');
+      final isWhite = fenParts.length > 1 && fenParts[1] == 'w';
+
+      if (san == 'O-O') {
+        // Kingside castling: king goes to g-file
+        return isWhite ? 'g1' : 'g8';
+      } else {
+        // Queenside castling: king goes to c-file
+        return isWhite ? 'c1' : 'c8';
+      }
+    }
+
+    // Handle promotion (e.g., e8=Q)
+    final promotionMatch = RegExp(r'([a-h][1-8])=').firstMatch(san);
+    if (promotionMatch != null) {
+      return promotionMatch.group(1);
+    }
+
+    // Extract destination square (last 2 chars that match [a-h][1-8])
+    final squareMatch = RegExp(r'([a-h][1-8])$').firstMatch(san);
+    if (squareMatch != null) {
+      return squareMatch.group(1);
     }
 
     return null;
