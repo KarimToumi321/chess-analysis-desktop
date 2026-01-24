@@ -226,6 +226,9 @@ class AnalysisService {
     final moveAnalyses = <MoveAnalysis>[];
 
     for (var i = 0; i < moves.length; i++) {
+      print(
+        '[AnalysisService] Analyzing move ${i + 1}/${moves.length}: ${moves[i]}',
+      );
       onProgress(i + 1, moves.length);
 
       final fenBefore = game.fen;
@@ -292,11 +295,21 @@ class AnalysisService {
         playedUci = _uciFromUndo(undoData);
         final replayOk = _replayFromUndo(game, undoData);
         if (!replayOk) {
-          continue;
+          // Fallback: re-apply the SAN move to keep game state consistent
+          final sanReapply = game.move(playedSan);
+          if (sanReapply == false) {
+            print(
+              '[AnalysisService] Move ${i + 1} SAN re-apply also failed - skipping',
+            );
+            continue;
+          }
         }
       } else {
         // If undo didn't yield details, re-apply SAN to keep state.
-        game.move(playedSan);
+        final sanApply = game.move(playedSan);
+        if (sanApply == false) {
+          continue;
+        }
       }
 
       final fenAfterPlayed = game.fen;
@@ -396,6 +409,9 @@ class AnalysisService {
       );
     }
 
+    print(
+      '[AnalysisService] Analysis complete: ${moveAnalyses.length} moves analyzed',
+    );
     return GameAnalysis.fromMoves(moveAnalyses);
   }
 
@@ -496,16 +512,49 @@ class AnalysisService {
   bool _replayFromUndo(chess.Chess game, Map undoData) {
     final from = undoData['from'];
     final to = undoData['to'];
-    if (from is! String || to is! String) return false;
+    if (from is! String || to is! String) {
+      return false;
+    }
 
     final move = <String, dynamic>{'from': from, 'to': to};
     final promotion = undoData['promotion'];
-    if (promotion is String && promotion.isNotEmpty) {
-      move['promotion'] = promotion.toLowerCase();
+    if (promotion != null) {
+      // Handle promotion - could be String, int, or PieceType enum
+      String? promoPiece;
+      if (promotion is String && promotion.isNotEmpty) {
+        promoPiece = promotion.toLowerCase();
+      } else {
+        // Try to convert to string and extract piece letter
+        final promoStr = promotion.toString().toLowerCase();
+        if (promoStr.contains('queen') || promoStr.contains('q')) {
+          promoPiece = 'q';
+        } else if (promoStr.contains('rook') || promoStr.contains('r')) {
+          promoPiece = 'r';
+        } else if (promoStr.contains('bishop') || promoStr.contains('b')) {
+          promoPiece = 'b';
+        } else if (promoStr.contains('knight') || promoStr.contains('n')) {
+          promoPiece = 'n';
+        } else {
+          promoPiece = 'q'; // Default to queen
+        }
+      }
+      if (promoPiece != null) {
+        move['promotion'] = promoPiece;
+      }
     }
 
+    print('[_replayFromUndo] Attempting move: $move');
     final result = game.move(move);
-    return result != false;
+    final success = result != false;
+    if (!success) {
+      print('[_replayFromUndo] Move FAILED with result: $result');
+      print('[_replayFromUndo] Current FEN: ${game.fen}');
+    } else {
+      print(
+        '[_replayFromUndo] Move result: success=$success, new FEN: ${game.fen}',
+      );
+    }
+    return success;
   }
 
   String? _uciFromUndo(Map undoData) {
@@ -513,8 +562,28 @@ class AnalysisService {
     final to = undoData['to'];
     if (from is! String || to is! String) return null;
     final promotion = undoData['promotion'];
-    if (promotion is String && promotion.isNotEmpty) {
-      return '$from$to${promotion.toLowerCase()}';
+    if (promotion != null) {
+      String? promoPiece;
+      if (promotion is String && promotion.isNotEmpty) {
+        promoPiece = promotion.toLowerCase();
+      } else {
+        // Try to extract piece from toString
+        final promoStr = promotion.toString().toLowerCase();
+        if (promoStr.contains('queen') || promoStr.contains('q')) {
+          promoPiece = 'q';
+        } else if (promoStr.contains('rook') || promoStr.contains('r')) {
+          promoPiece = 'r';
+        } else if (promoStr.contains('bishop') || promoStr.contains('b')) {
+          promoPiece = 'b';
+        } else if (promoStr.contains('knight') || promoStr.contains('n')) {
+          promoPiece = 'n';
+        } else {
+          promoPiece = 'q';
+        }
+      }
+      if (promoPiece != null) {
+        return '$from$to$promoPiece';
+      }
     }
     return '$from$to';
   }

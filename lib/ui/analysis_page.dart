@@ -303,6 +303,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
                         onArrowsChanged: (arrows) {
                           chess.setArrowsForCurrentPosition(arrows);
                         },
+                        moveAnalysis: chess.currentIndex > 0
+                            ? chess.getMoveAnalysisForMoveIndex(
+                                chess.currentIndex - 1,
+                              )
+                            : null,
+                        lastMoveTo: chess.getLastMoveToSquare(),
                         onMoveMade: ({required from, required to, promotion}) {
                           return chess.makeMove(
                             from: from,
@@ -389,6 +395,12 @@ class _AnalysisPageState extends State<AnalysisPage> {
                         onArrowsChanged: (arrows) {
                           chess.setArrowsForCurrentPosition(arrows);
                         },
+                        moveAnalysis: chess.currentIndex > 0
+                            ? chess.getMoveAnalysisForMoveIndex(
+                                chess.currentIndex - 1,
+                              )
+                            : null,
+                        lastMoveTo: chess.getLastMoveToSquare(),
                         onMoveMade: ({required from, required to, promotion}) {
                           return chess.makeMove(
                             from: from,

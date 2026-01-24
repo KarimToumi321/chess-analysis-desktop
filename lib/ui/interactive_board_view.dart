@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:chess/chess.dart' as chess;
+import '../models/move_analysis.dart';
+import 'move_label_icon.dart';
 
 class Arrow {
   final String from;
@@ -45,6 +47,8 @@ class InteractiveBoardView extends StatefulWidget {
     this.flipped = false,
     this.arrows = const [],
     this.onArrowsChanged,
+    this.moveAnalysis,
+    this.lastMoveTo,
   });
 
   final String fen;
@@ -53,6 +57,8 @@ class InteractiveBoardView extends StatefulWidget {
   final bool flipped;
   final List<Arrow> arrows;
   final void Function(List<Arrow>)? onArrowsChanged;
+  final MoveAnalysis? moveAnalysis;
+  final String? lastMoveTo;
 
   @override
   State<InteractiveBoardView> createState() => _InteractiveBoardViewState();
@@ -345,6 +351,19 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                                     if (isHovered)
                                       Container(
                                         color: Colors.blue.withOpacity(0.3),
+                                      ),
+                                    // Move label icon overlay
+                                    if (widget.moveAnalysis != null &&
+                                        widget.lastMoveTo == square)
+                                      Positioned(
+                                        top: 2,
+                                        right: 2,
+                                        child: MoveLabelIcon(
+                                          classification: widget
+                                              .moveAnalysis!
+                                              .classification,
+                                          size: squareSize * 0.28,
+                                        ),
                                       ),
                                     if (rank == 7 || file == 0)
                                       _buildCoordinates(file, rank, isLight),

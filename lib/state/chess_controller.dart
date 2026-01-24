@@ -168,30 +168,92 @@ class ChessController extends ChangeNotifier {
 
   void upsertMoveAnalysis(MoveAnalysis analysis) {
     final key = _analysisKey(fenBefore: analysis.fen, san: analysis.move);
+    print(
+      '[upsertMoveAnalysis] Storing move ${analysis.moveNumber} (${analysis.move}) with key=$key, classification=${analysis.classification.name}',
+    );
     _moveAnalysisByKey[key] = analysis;
     notifyListeners();
   }
 
   MoveAnalysis? getMoveAnalysisForMoveIndex(int moveIndex) {
-    if (moveIndex < 0 || moveIndex >= _moves.length) return null;
+    if (moveIndex < 0 || moveIndex >= _moves.length) {
+      print(
+        '[getMoveAnalysisForMoveIndex] Out of bounds: moveIndex=$moveIndex, moves.length=${_moves.length}',
+      );
+      return null;
+    }
 
     final fenBefore = _fenAtPly(moveIndex);
     final san = _moves[moveIndex];
     final key = _analysisKey(fenBefore: fenBefore, san: san);
+    print(
+      '[getMoveAnalysisForMoveIndex] Looking for move ${moveIndex + 1} ($san) with key=$key',
+    );
     final cached = _moveAnalysisByKey[key];
-    if (cached != null) return cached;
+    if (cached != null) {
+      print(
+        '[getMoveAnalysisForMoveIndex] Found in cache: ${cached.classification.name}',
+      );
+      return cached;
+    }
 
     final ga = _gameAnalysis;
-    if (ga == null) return null;
+    if (ga == null) {
+      print('[getMoveAnalysisForMoveIndex] No gameAnalysis available');
+      return null;
+    }
     final fromGa = ga.getMoveAnalysis(moveIndex);
-    if (fromGa == null) return null;
+    if (fromGa == null) {
+      print('[getMoveAnalysisForMoveIndex] Not found in gameAnalysis');
+      return null;
+    }
     // Only use GameAnalysis result if it matches this exact position+move
-    if (fromGa.fen == fenBefore && fromGa.move == san) return fromGa;
+    if (fromGa.fen == fenBefore && fromGa.move == san) {
+      print(
+        '[getMoveAnalysisForMoveIndex] Found in gameAnalysis: ${fromGa.classification.name}',
+      );
+      return fromGa;
+    }
+    print(
+      '[getMoveAnalysisForMoveIndex] GameAnalysis mismatch: fromGa.fen=${fromGa.fen} != fenBefore=$fenBefore OR fromGa.move=${fromGa.move} != san=$san',
+    );
     return null;
   }
 
   String getFenBeforeMoveIndex(int moveIndex) {
     return _fenAtPly(moveIndex);
+  }
+
+  String? getLastMoveToSquare() {
+    if (_currentIndex == 0) return null;
+
+    // Get the last move that was played
+    final lastMoveIndex = _currentIndex - 1;
+    if (lastMoveIndex < 0 || lastMoveIndex >= _moves.length) return null;
+
+    final san = _moves[lastMoveIndex];
+    final fenBefore = _fenAtPly(lastMoveIndex);
+
+    try {
+      final position = chess.Chess.fromFEN(fenBefore);
+      dynamic moveDetail = position.move(san);
+
+      // The chess library returns a map with 'to' field, or false on failure
+      if (moveDetail is Map) {
+        final toSquare = moveDetail['to'];
+        if (toSquare is String) {
+          print(
+            '[getLastMoveToSquare] Move ${lastMoveIndex + 1} ($san) -> $toSquare',
+          );
+          return toSquare;
+        }
+      }
+    } catch (e) {
+      print('[getLastMoveToSquare] Error: $e');
+      return null;
+    }
+
+    return null;
   }
 
   String _analysisKey({required String fenBefore, required String san}) {
