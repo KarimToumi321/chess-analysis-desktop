@@ -314,6 +314,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
                             onArrowsChanged: (arrows) {
                               chess.setArrowsForCurrentPosition(arrows);
                             },
+                            highlights: chess.getHighlightsForCurrentPosition(),
+                            onHighlightsChanged: (highlights) {
+                              chess.setHighlightsForCurrentPosition(highlights);
+                            },
                             moveAnalysis: moveAnalysis,
                             lastMoveTo: lastMoveTo,
                             onMoveMade:
@@ -404,6 +408,10 @@ class _AnalysisPageState extends State<AnalysisPage> {
                         arrows: chess.getArrowsForCurrentPosition(),
                         onArrowsChanged: (arrows) {
                           chess.setArrowsForCurrentPosition(arrows);
+                        },
+                        highlights: chess.getHighlightsForCurrentPosition(),
+                        onHighlightsChanged: (highlights) {
+                          chess.setHighlightsForCurrentPosition(highlights);
                         },
                         moveAnalysis: chess.currentIndex > 0
                             ? chess.getMoveAnalysisForMoveIndex(

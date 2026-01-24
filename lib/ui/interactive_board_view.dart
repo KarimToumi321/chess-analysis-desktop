@@ -47,6 +47,8 @@ class InteractiveBoardView extends StatefulWidget {
     this.flipped = false,
     this.arrows = const [],
     this.onArrowsChanged,
+    this.highlights = const {},
+    this.onHighlightsChanged,
     this.moveAnalysis,
     this.lastMoveTo,
   });
@@ -57,6 +59,8 @@ class InteractiveBoardView extends StatefulWidget {
   final bool flipped;
   final List<Arrow> arrows;
   final void Function(List<Arrow>)? onArrowsChanged;
+  final Set<String> highlights;
+  final void Function(Set<String>)? onHighlightsChanged;
   final MoveAnalysis? moveAnalysis;
   final String? lastMoveTo;
 
@@ -70,6 +74,8 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
   List<String> _legalMoves = [];
   String? _arrowStart;
   Offset? _arrowDragPosition;
+  Offset? _rightClickStartPosition;
+  bool _isDraggingArrow = false;
   late chess.Chess _chessEngine;
   late AnimationController _animationController;
   late Animation<double> _animation;
@@ -248,6 +254,8 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                     setState(() {
                       _arrowStart = square;
                       _arrowDragPosition = localPosition;
+                      _rightClickStartPosition = localPosition;
+                      _isDraggingArrow = false;
                     });
                   }
                 },
@@ -256,6 +264,16 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                       _arrowStart != null) {
                     final box = context.findRenderObject() as RenderBox;
                     final localPosition = box.globalToLocal(event.position);
+
+                    // Check if drag distance exceeds threshold
+                    if (_rightClickStartPosition != null && !_isDraggingArrow) {
+                      final dragDistance =
+                          (localPosition - _rightClickStartPosition!).distance;
+                      if (dragDistance > 10) {
+                        _isDraggingArrow = true;
+                      }
+                    }
+
                     setState(() {
                       _arrowDragPosition = localPosition;
                     });
@@ -269,12 +287,22 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                       localPosition,
                       boardSize,
                     );
-                    if (square != null && square != _arrowStart) {
+
+                    if (_isDraggingArrow &&
+                        square != null &&
+                        square != _arrowStart) {
+                      // Dragged - create arrow
                       _addArrow(_arrowStart!, square);
+                    } else if (!_isDraggingArrow && _arrowStart != null) {
+                      // Clicked - toggle highlight
+                      _toggleHighlight(_arrowStart!);
                     }
+
                     setState(() {
                       _arrowStart = null;
                       _arrowDragPosition = null;
+                      _rightClickStartPosition = null;
+                      _isDraggingArrow = false;
                     });
                   }
                 },
@@ -336,6 +364,13 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
                                 ),
                                 child: Stack(
                                   children: [
+                                    // Highlighted square overlay (under pieces)
+                                    if (widget.highlights.contains(square))
+                                      Container(
+                                        color: const Color(
+                                          0xFFE8CA5A,
+                                        ).withOpacity(0.5),
+                                      ),
                                     // King in check overlay
                                     if (isKingInCheck)
                                       Container(
@@ -565,6 +600,19 @@ class _InteractiveBoardViewState extends State<InteractiveBoardView>
     }
 
     widget.onArrowsChanged?.call(currentArrows);
+  }
+
+  void _toggleHighlight(String square) {
+    final currentHighlights = Set<String>.from(widget.highlights);
+
+    // Toggle highlight
+    if (currentHighlights.contains(square)) {
+      currentHighlights.remove(square);
+    } else {
+      currentHighlights.add(square);
+    }
+
+    widget.onHighlightsChanged?.call(currentHighlights);
   }
 
   void _handleSquareTap(String square, String? piece) {
@@ -957,6 +1005,51 @@ class ArrowPainter extends CustomPainter {
     return oldDelegate.arrows != arrows ||
         oldDelegate.arrowStart != arrowStart ||
         oldDelegate.arrowDragPosition != arrowDragPosition ||
+        oldDelegate.flipped != flipped;
+  }
+}
+
+class HighlightPainter extends CustomPainter {
+  final Set<String> highlights;
+  final double squareSize;
+  final bool flipped;
+
+  HighlightPainter({
+    required this.highlights,
+    required this.squareSize,
+    required this.flipped,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (highlights.isEmpty) return;
+
+    final paint = Paint()
+      ..color = const Color(0xFFE8CA5A)
+          .withOpacity(0.5) // Yellowish color
+      ..style = PaintingStyle.fill;
+
+    for (final square in highlights) {
+      final file = square.codeUnitAt(0) - 'a'.codeUnitAt(0);
+      final rank = 8 - int.parse(square[1]);
+
+      final displayFile = flipped ? 7 - file : file;
+      final displayRank = flipped ? 7 - rank : rank;
+
+      final rect = Rect.fromLTWH(
+        displayFile * squareSize,
+        displayRank * squareSize,
+        squareSize,
+        squareSize,
+      );
+
+      canvas.drawRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(HighlightPainter oldDelegate) {
+    return oldDelegate.highlights != highlights ||
         oldDelegate.flipped != flipped;
   }
 }

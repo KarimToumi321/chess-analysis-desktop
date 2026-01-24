@@ -46,6 +46,9 @@ class ChessController extends ChangeNotifier {
   // Arrow storage per FEN position
   final Map<String, List<Arrow>> _arrowsByFen = {};
 
+  // Highlighted squares storage per FEN position
+  final Map<String, Set<String>> _highlightsByFen = {};
+
   List<String> get moves => List.unmodifiable(_moves);
   int get currentIndex => _currentIndex;
   String get pgnText => _pgnText;
@@ -70,6 +73,19 @@ class ChessController extends ChangeNotifier {
       _arrowsByFen.remove(fen);
     } else {
       _arrowsByFen[fen] = arrows;
+    }
+    notifyListeners();
+  }
+
+  Set<String> getHighlightsForCurrentPosition() {
+    return _highlightsByFen[fen] ?? {};
+  }
+
+  void setHighlightsForCurrentPosition(Set<String> highlights) {
+    if (highlights.isEmpty) {
+      _highlightsByFen.remove(fen);
+    } else {
+      _highlightsByFen[fen] = highlights;
     }
     notifyListeners();
   }
