@@ -24,7 +24,7 @@ class AnalysisService {
     required String playedSan,
     required int moveNumber,
     required Duration timePerMove,
-    MoveLabelHarshness harshness = MoveLabelHarshness.normal,
+    MoveLabelHarshness harshness = MoveLabelHarshness.harsh,
     void Function(String message)? debugLog,
   }) async {
     void log(String message) => debugLog?.call('[analyzeSingleMove] $message');
@@ -216,7 +216,7 @@ class AnalysisService {
     required String startingFen,
     required Function(int current, int total) onProgress,
     Duration timePerMove = const Duration(milliseconds: 500),
-    MoveLabelHarshness harshness = MoveLabelHarshness.normal,
+    MoveLabelHarshness harshness = MoveLabelHarshness.harsh,
   }) async {
     final game = chess.Chess();
     if (startingFen.isNotEmpty && startingFen != chess.Chess.DEFAULT_POSITION) {

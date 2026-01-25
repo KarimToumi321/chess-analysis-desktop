@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:chess/chess.dart' as chess;
 
 import '../utils/pgn_parser.dart';
 import '../models/variation.dart';
 import '../models/move_analysis.dart';
 import '../models/move_labeling.dart';
+import '../models/move_label.dart';
+import '../models/saved_analysis.dart';
 import '../ui/interactive_board_view.dart';
 
 class ChessController extends ChangeNotifier {
@@ -20,7 +23,7 @@ class ChessController extends ChangeNotifier {
   // Engine analysis settings (mirrors PGN selection UI)
   bool _analyzeWithEngine = false;
   Duration _analysisTimePerMove = const Duration(milliseconds: 500);
-  MoveLabelHarshness _moveLabelHarshness = MoveLabelHarshness.normal;
+  MoveLabelHarshness _moveLabelHarshness = MoveLabelHarshness.harsh;
 
   // Move analysis cache keyed by (fenBefore|san) so side lines can be labeled.
   final Map<String, MoveAnalysis> _moveAnalysisByKey = {};
@@ -48,6 +51,17 @@ class ChessController extends ChangeNotifier {
 
   // Highlighted squares storage per FEN position
   final Map<String, Set<String>> _highlightsByFen = {};
+
+  // Commentary storage per FEN position
+  final Map<String, String> _commentsByFen = {};
+
+  // User labels storage per variation and move index
+  final Map<String, MoveUserLabels> _userLabelsByKey = {};
+  int _maxUserLabelsPerMove = 3;
+
+  String _getLabelKey(String variationId, int moveIndex) {
+    return '${variationId}_$moveIndex';
+  }
 
   List<String> get moves => List.unmodifiable(_moves);
   int get currentIndex => _currentIndex;
@@ -89,6 +103,76 @@ class ChessController extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  String getCommentForCurrentPosition() {
+    return _commentsByFen[fen] ?? '';
+  }
+
+  void setCommentForCurrentPosition(String comment) {
+    if (comment.isEmpty) {
+      _commentsByFen.remove(fen);
+    } else {
+      _commentsByFen[fen] = comment;
+    }
+    notifyListeners();
+  }
+
+  void setCommentForFen(String fenPosition, String comment) {
+    if (comment.isEmpty) {
+      _commentsByFen.remove(fenPosition);
+    } else {
+      _commentsByFen[fenPosition] = comment;
+    }
+    notifyListeners();
+  }
+
+  // User labels management
+  MoveUserLabels? getUserLabelsForMove(int moveIndex) {
+    final key = _getLabelKey(_gameTree.currentVariationId, moveIndex);
+    return _userLabelsByKey[key];
+  }
+
+  void setUserLabelsForMove(int moveIndex, List<String> labelIds) {
+    final key = _getLabelKey(_gameTree.currentVariationId, moveIndex);
+    if (labelIds.isEmpty) {
+      _userLabelsByKey.remove(key);
+    } else {
+      final limitedLabelIds = labelIds.take(_maxUserLabelsPerMove).toList();
+      _userLabelsByKey[key] = MoveUserLabels(
+        moveIndex: moveIndex,
+        labelIds: limitedLabelIds,
+      );
+    }
+    notifyListeners();
+  }
+
+  void addUserLabelToMove(int moveIndex, String labelId) {
+    final key = _getLabelKey(_gameTree.currentVariationId, moveIndex);
+    final existing = _userLabelsByKey[key];
+    final currentIds = existing?.labelIds ?? [];
+
+    if (currentIds.contains(labelId)) return;
+    if (currentIds.length >= _maxUserLabelsPerMove) return;
+
+    final newIds = [...currentIds, labelId];
+    setUserLabelsForMove(moveIndex, newIds);
+  }
+
+  void removeUserLabelFromMove(int moveIndex, String labelId) {
+    final key = _getLabelKey(_gameTree.currentVariationId, moveIndex);
+    final existing = _userLabelsByKey[key];
+    if (existing == null) return;
+
+    final newIds = existing.labelIds.where((id) => id != labelId).toList();
+    setUserLabelsForMove(moveIndex, newIds);
+  }
+
+  void setMaxUserLabelsPerMove(int max) {
+    _maxUserLabelsPerMove = max.clamp(1, 5);
+    notifyListeners();
+  }
+
+  int get maxUserLabelsPerMove => _maxUserLabelsPerMove;
 
   void loadPgn(String pgn) {
     _pgnText = pgn.trim();
@@ -174,7 +258,7 @@ class ChessController extends ChangeNotifier {
   void setAnalysisSettings({
     required bool analyzeWithEngine,
     required Duration timePerMove,
-    MoveLabelHarshness moveLabelHarshness = MoveLabelHarshness.normal,
+    MoveLabelHarshness moveLabelHarshness = MoveLabelHarshness.harsh,
   }) {
     _analyzeWithEngine = analyzeWithEngine;
     _analysisTimePerMove = timePerMove;
@@ -865,5 +949,134 @@ class ChessController extends ChangeNotifier {
       // fall through
     }
     return '';
+  }
+
+  // Export/Import analysis
+  SavedAnalysis exportAnalysis(String title) {
+    return SavedAnalysis(
+      title: title,
+      savedAt: DateTime.now(),
+      pgnText: _pgnText,
+      gameTree: _serializeGameTree(),
+      gameAnalysis: _gameAnalysis?.toJson(),
+      userLabelsByKey: _userLabelsByKey.map(
+        (key, value) => MapEntry(key, value.labelIds),
+      ),
+      commentsByFen: Map.from(_commentsByFen),
+      arrowsByFen: _arrowsByFen.map(
+        (key, value) => MapEntry(
+          key,
+          value
+              .map(
+                (arrow) => {
+                  'from': arrow.from,
+                  'to': arrow.to,
+                  'color': arrow.color.value,
+                },
+              )
+              .toList(),
+        ),
+      ),
+      highlightsByFen: _highlightsByFen.map(
+        (key, value) => MapEntry(key, value.toList()),
+      ),
+    );
+  }
+
+  void importAnalysis(SavedAnalysis saved) {
+    // Load PGN
+    loadPgn(saved.pgnText);
+
+    // Restore game tree
+    _deserializeGameTree(saved.gameTree);
+
+    // Restore game analysis
+    if (saved.gameAnalysis != null) {
+      _gameAnalysis = GameAnalysis.fromJson(saved.gameAnalysis!);
+      // Populate evaluation cache
+      if (_gameAnalysis != null) {
+        setGameAnalysis(_gameAnalysis!);
+      }
+    }
+
+    // Restore user labels
+    _userLabelsByKey.clear();
+    saved.userLabelsByKey.forEach((key, labelIds) {
+      final parts = key.split('_');
+      if (parts.length == 2) {
+        final moveIndex = int.tryParse(parts[1]);
+        if (moveIndex != null) {
+          _userLabelsByKey[key] = MoveUserLabels(
+            moveIndex: moveIndex,
+            labelIds: labelIds,
+          );
+        }
+      }
+    });
+
+    // Restore comments
+    _commentsByFen.clear();
+    _commentsByFen.addAll(saved.commentsByFen);
+
+    // Restore arrows
+    _arrowsByFen.clear();
+    saved.arrowsByFen.forEach((key, value) {
+      _arrowsByFen[key] = value
+          .map(
+            (arrow) => Arrow(
+              from: arrow['from'] as String,
+              to: arrow['to'] as String,
+              color: Color(arrow['color'] as int),
+            ),
+          )
+          .toList();
+    });
+
+    // Restore highlights
+    _highlightsByFen.clear();
+    saved.highlightsByFen.forEach((key, value) {
+      _highlightsByFen[key] = value.toSet();
+    });
+
+    notifyListeners();
+  }
+
+  Map<String, dynamic> _serializeGameTree() {
+    return {
+      'variations': _gameTree.variations.map(
+        (key, value) => MapEntry(key, {
+          'id': value.id,
+          'name': value.name,
+          'moves': value.moves,
+          'startPosition': value.startPosition,
+          'parentId': value.parentId,
+        }),
+      ),
+      'currentVariationId': _gameTree.currentVariationId,
+    };
+  }
+
+  void _deserializeGameTree(Map<String, dynamic> data) {
+    final variations = (data['variations'] as Map<String, dynamic>).map((
+      key,
+      value,
+    ) {
+      final v = value as Map<String, dynamic>;
+      return MapEntry(
+        key,
+        Variation(
+          id: v['id'] as String,
+          name: v['name'] as String,
+          moves: List<String>.from(v['moves'] as List),
+          startPosition: v['startPosition'] as int,
+          parentId: v['parentId'] as String?,
+        ),
+      );
+    });
+
+    _gameTree = GameTree(
+      variations: variations,
+      currentVariationId: data['currentVariationId'] as String,
+    );
   }
 }

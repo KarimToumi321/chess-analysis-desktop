@@ -15,29 +15,27 @@ class MaterialCount extends StatelessWidget {
     final advantage = whiteTotal - blackTotal;
 
     return Card(
-      elevation: 2,
+      elevation: 0,
+      color: Colors.blueGrey.shade200,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.balance,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
+                Icon(Icons.balance, color: Colors.grey.shade700, size: 16),
+                const SizedBox(width: 6),
                 Text(
                   'Material',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             _buildMaterialRow(
               context,
               'White',
@@ -45,15 +43,17 @@ class MaterialCount extends StatelessWidget {
               whiteTotal,
               advantage > 0 ? advantage : 0,
               Colors.white,
+              true,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             _buildMaterialRow(
               context,
               'Black',
               blackMaterial,
               blackTotal,
               advantage < 0 ? -advantage : 0,
-              Colors.grey.shade800,
+              Colors.black,
+              false,
             ),
           ],
         ),
@@ -68,6 +68,7 @@ class MaterialCount extends StatelessWidget {
     int total,
     int advantage,
     Color pieceColor,
+    bool isWhite,
   ) {
     return Row(
       children: [
@@ -86,15 +87,15 @@ class MaterialCount extends StatelessWidget {
             spacing: 4,
             children: [
               if (pieces['Q']! > 0)
-                _buildPieceCount('♕', pieces['Q']!, pieceColor),
+                _buildPieceCount('queen', pieces['Q']!, isWhite),
               if (pieces['R']! > 0)
-                _buildPieceCount('♖', pieces['R']!, pieceColor),
+                _buildPieceCount('rook', pieces['R']!, isWhite),
               if (pieces['B']! > 0)
-                _buildPieceCount('♗', pieces['B']!, pieceColor),
+                _buildPieceCount('bishop', pieces['B']!, isWhite),
               if (pieces['N']! > 0)
-                _buildPieceCount('♘', pieces['N']!, pieceColor),
+                _buildPieceCount('knight', pieces['N']!, isWhite),
               if (pieces['P']! > 0)
-                _buildPieceCount('♙', pieces['P']!, pieceColor),
+                _buildPieceCount('pawn', pieces['P']!, isWhite),
             ],
           ),
         ),
@@ -118,22 +119,17 @@ class MaterialCount extends StatelessWidget {
     );
   }
 
-  Widget _buildPieceCount(String piece, int count, Color color) {
+  Widget _buildPieceCount(String pieceName, int count, bool isWhite) {
+    final color = isWhite ? 'white' : 'black';
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          piece,
-          style: TextStyle(
-            fontSize: 20,
-            color: color,
-            shadows: [
-              Shadow(
-                color: Colors.black.withOpacity(0.3),
-                offset: const Offset(0.5, 0.5),
-                blurRadius: 1,
-              ),
-            ],
+        SizedBox(
+          width: 20,
+          height: 20,
+          child: Image.asset(
+            'assets/pieces/$color-$pieceName.png',
+            fit: BoxFit.contain,
           ),
         ),
         if (count > 1)
@@ -152,43 +148,74 @@ class MaterialCount extends StatelessWidget {
   Map<String, dynamic> _calculateMaterial(String fen) {
     final pieceValues = {'q': 9, 'r': 5, 'b': 3, 'n': 3, 'p': 1};
 
-    final white = {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0};
-    final black = {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0};
+    // Starting material for each side
+    final startingMaterial = {'Q': 1, 'R': 2, 'B': 2, 'N': 2, 'P': 8};
+
+    final whiteOnBoard = {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0};
+    final blackOnBoard = {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0};
 
     if (fen.trim().isEmpty) {
-      return {'white': white, 'black': black, 'whiteTotal': 0, 'blackTotal': 0};
+      return {
+        'white': {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0},
+        'black': {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0},
+        'whiteTotal': 0,
+        'blackTotal': 0,
+      };
     }
 
     final parts = fen.split(' ');
     if (parts.isEmpty) {
-      return {'white': white, 'black': black, 'whiteTotal': 0, 'blackTotal': 0};
+      return {
+        'white': {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0},
+        'black': {'Q': 0, 'R': 0, 'B': 0, 'N': 0, 'P': 0},
+        'whiteTotal': 0,
+        'blackTotal': 0,
+      };
     }
 
     final position = parts[0];
-    var whiteTotal = 0;
-    var blackTotal = 0;
 
+    // Count pieces currently on the board
     for (final char in position.split('')) {
       final lower = char.toLowerCase();
       if (pieceValues.containsKey(lower)) {
-        final value = pieceValues[lower]!;
         if (char == char.toUpperCase()) {
-          // White piece
-          white[char] = white[char]! + 1;
-          whiteTotal += value;
+          // White piece on board
+          whiteOnBoard[char] = whiteOnBoard[char]! + 1;
         } else {
-          // Black piece
-          black[char.toUpperCase()] = black[char.toUpperCase()]! + 1;
-          blackTotal += value;
+          // Black piece on board
+          blackOnBoard[char.toUpperCase()] =
+              blackOnBoard[char.toUpperCase()]! + 1;
         }
       }
     }
 
+    // Calculate captured pieces (starting - on board)
+    // White captured = black pieces missing from board
+    final whiteCaptured = <String, int>{};
+    // Black captured = white pieces missing from board
+    final blackCaptured = <String, int>{};
+
+    var whiteCapturedTotal = 0;
+    var blackCapturedTotal = 0;
+
+    for (final piece in ['Q', 'R', 'B', 'N', 'P']) {
+      // Pieces captured by white (black pieces missing)
+      whiteCaptured[piece] = startingMaterial[piece]! - blackOnBoard[piece]!;
+      whiteCapturedTotal +=
+          whiteCaptured[piece]! * pieceValues[piece.toLowerCase()]!;
+
+      // Pieces captured by black (white pieces missing)
+      blackCaptured[piece] = startingMaterial[piece]! - whiteOnBoard[piece]!;
+      blackCapturedTotal +=
+          blackCaptured[piece]! * pieceValues[piece.toLowerCase()]!;
+    }
+
     return {
-      'white': white,
-      'black': black,
-      'whiteTotal': whiteTotal,
-      'blackTotal': blackTotal,
+      'white': whiteCaptured,
+      'black': blackCaptured,
+      'whiteTotal': whiteCapturedTotal,
+      'blackTotal': blackCapturedTotal,
     };
   }
 }

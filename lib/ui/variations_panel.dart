@@ -112,13 +112,22 @@ class VariationsPanel extends StatelessWidget {
           ),
         ),
         trailing: isMainLine
-            ? (isSelected
-                  ? Icon(
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isSelected)
+                    Icon(
                       Icons.check_circle,
                       color: Theme.of(context).colorScheme.primary,
                       size: 20,
-                    )
-                  : null)
+                    ),
+                  IconButton(
+                    icon: const Icon(Icons.analytics_outlined, size: 20),
+                    tooltip: 'Analyze main line',
+                    onPressed: () => _analyzeVariation(context, variation),
+                  ),
+                ],
+              )
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

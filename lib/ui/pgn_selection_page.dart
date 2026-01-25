@@ -20,7 +20,9 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
   String _fileName = '';
   bool _analyzeWithEngine = false;
   int _analysisTimeMs = 500;
-  MoveLabelHarshness _moveLabelHarshness = MoveLabelHarshness.normal;
+  int _engineDepth = 20;
+  int _engineMultiPv = 2;
+  MoveLabelHarshness _moveLabelHarshness = MoveLabelHarshness.harsh;
 
   @override
   void initState() {
@@ -171,6 +173,51 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      DropdownMenu<int>(
+                        initialSelection: _engineDepth,
+                        label: const Text('Engine search depth'),
+                        onSelected: (value) {
+                          if (value == null) return;
+                          setState(() => _engineDepth = value);
+                        },
+                        dropdownMenuEntries: const [
+                          DropdownMenuEntry(
+                            value: 15,
+                            label: 'Depth 15 (Fast)',
+                          ),
+                          DropdownMenuEntry(
+                            value: 20,
+                            label: 'Depth 20 (Balanced)',
+                          ),
+                          DropdownMenuEntry(
+                            value: 25,
+                            label: 'Depth 25 (Accurate)',
+                          ),
+                          DropdownMenuEntry(
+                            value: 30,
+                            label: 'Depth 30 (Very Deep)',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownMenu<int>(
+                        initialSelection: _engineMultiPv,
+                        label: const Text('MultiPV lines'),
+                        onSelected: (value) {
+                          if (value == null) return;
+                          setState(() => _engineMultiPv = value);
+                        },
+                        dropdownMenuEntries: const [
+                          DropdownMenuEntry(value: 1, label: '1 line'),
+                          DropdownMenuEntry(
+                            value: 2,
+                            label: '2 lines (Default)',
+                          ),
+                          DropdownMenuEntry(value: 3, label: '3 lines'),
+                          DropdownMenuEntry(value: 5, label: '5 lines'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
                       DropdownMenu<MoveLabelHarshness>(
                         initialSelection: _moveLabelHarshness,
                         label: const Text('Move labeling harshness'),
@@ -180,24 +227,12 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
                         },
                         dropdownMenuEntries: const [
                           DropdownMenuEntry(
-                            value: MoveLabelHarshness.easy,
-                            label: 'Easy (forgiving)',
-                          ),
-                          DropdownMenuEntry(
-                            value: MoveLabelHarshness.normal,
-                            label: 'Normal',
-                          ),
-                          DropdownMenuEntry(
                             value: MoveLabelHarshness.harsh,
                             label: 'Harsh',
                           ),
                           DropdownMenuEntry(
                             value: MoveLabelHarshness.extreme,
                             label: 'Extreme',
-                          ),
-                          DropdownMenuEntry(
-                            value: MoveLabelHarshness.crazyHarsh,
-                            label: 'Crazy harsh',
                           ),
                         ],
                       ),
@@ -341,7 +376,7 @@ class _PgnSelectionPageState extends State<PgnSelectionPage> {
     chess.setAnalysisSettings(
       analyzeWithEngine: false,
       timePerMove: const Duration(milliseconds: 500),
-      moveLabelHarshness: MoveLabelHarshness.normal,
+      moveLabelHarshness: MoveLabelHarshness.harsh,
     );
     chess.loadPgn('');
     Navigator.of(context).pushReplacement(

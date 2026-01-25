@@ -1,4 +1,4 @@
-enum MoveLabelHarshness { easy, normal, harsh, extreme, crazyHarsh }
+enum MoveLabelHarshness { harsh, extreme }
 
 class MoveLabelingThresholds {
   final double greatMax;
@@ -34,16 +34,6 @@ class MoveLabelingThresholds {
   );
 
   static const Map<MoveLabelHarshness, MoveLabelingThresholds> byHarshness = {
-    MoveLabelHarshness.easy: MoveLabelingThresholds(
-      greatMax: 15,
-      excellentMax: 45,
-      goodMax: 110,
-      inaccuracyMax: 260,
-      mistakeMax: 650,
-      decidedScale: 1.15,
-      decidedAbsEvalThreshold: 600,
-    ),
-    MoveLabelHarshness.normal: normal,
     MoveLabelHarshness.harsh: MoveLabelingThresholds(
       greatMax: 8,
       excellentMax: 25,
@@ -62,29 +52,14 @@ class MoveLabelingThresholds {
       decidedScale: 0.95,
       decidedAbsEvalThreshold: 600,
     ),
-    MoveLabelHarshness.crazyHarsh: MoveLabelingThresholds(
-      greatMax: 2,
-      excellentMax: 6,
-      goodMax: 15,
-      inaccuracyMax: 35,
-      mistakeMax: 80,
-      decidedScale: 0.85,
-      decidedAbsEvalThreshold: 600,
-    ),
   };
 }
 
 String moveLabelHarshnessLabel(MoveLabelHarshness h) {
   switch (h) {
-    case MoveLabelHarshness.easy:
-      return 'Easy';
-    case MoveLabelHarshness.normal:
-      return 'Normal';
     case MoveLabelHarshness.harsh:
       return 'Harsh';
     case MoveLabelHarshness.extreme:
       return 'Extreme';
-    case MoveLabelHarshness.crazyHarsh:
-      return 'Crazy harsh';
   }
 }

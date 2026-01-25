@@ -7,7 +7,6 @@ class MoveList extends StatelessWidget {
     required this.moves,
     required this.currentIndex,
     required this.onSelect,
-    this.onCreateVariation,
     this.gameAnalysis,
     this.moveAnalysisProvider,
   });
@@ -15,7 +14,6 @@ class MoveList extends StatelessWidget {
   final List<String> moves;
   final int currentIndex;
   final ValueChanged<int> onSelect;
-  final VoidCallback? onCreateVariation;
   final GameAnalysis? gameAnalysis;
   final MoveAnalysis? Function(int index)? moveAnalysisProvider;
 
@@ -49,21 +47,6 @@ class MoveList extends StatelessWidget {
             ),
           ),
         ],
-        if (onCreateVariation != null && currentIndex > 0)
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onCreateVariation,
-                icon: const Icon(Icons.add_circle_outline, size: 18),
-                label: const Text('Create Variation'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-          ),
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.all(12),

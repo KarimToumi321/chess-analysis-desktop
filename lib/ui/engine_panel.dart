@@ -108,6 +108,17 @@ class _EnginePanelState extends State<EnginePanel> {
     }
   }
 
+  void _showEngineSettings(BuildContext context, EngineController engine) {
+    showDialog(
+      context: context,
+      builder: (context) => _EngineSettingsDialog(
+        engine: engine,
+        enginePathController: _enginePath,
+        onPickEngine: () => _pickEngine(engine),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _enginePath.dispose();
@@ -125,47 +136,6 @@ class _EnginePanelState extends State<EnginePanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: _enginePath,
-              decoration: const InputDecoration(
-                labelText: 'Stockfish path',
-                hintText: 'Select Stockfish executable',
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _pickEngine(engine),
-                    icon: const Icon(Icons.folder_open_rounded, size: 18),
-                    label: const Text('Select engine'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: engine.isBusy
-                        ? null
-                        : () => engine.useCustomEngine(_enginePath.text.trim()),
-                    icon: const Icon(Icons.save_rounded, size: 18),
-                    label: const Text('Use path'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: engine.isBusy
-                      ? null
-                      : () => engine.useBundledEngine(),
-                  icon: const Icon(Icons.bolt_rounded),
-                  label: const Text('Use bundled Stockfish'),
-                ),
-              ],
-            ),
             Row(
               children: [
                 Expanded(
@@ -202,9 +172,14 @@ class _EnginePanelState extends State<EnginePanel> {
                     color: Theme.of(context).colorScheme.error,
                   ),
                 ],
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => _showEngineSettings(context, engine),
+                  icon: const Icon(Icons.settings),
+                  tooltip: 'Engine settings',
+                ),
               ],
             ),
-            const SizedBox(height: 12),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(8),
@@ -384,5 +359,197 @@ class _EnginePanelState extends State<EnginePanel> {
     if (file.path == null) return;
     _enginePath.text = file.path!;
     engine.useCustomEngine(file.path!);
+  }
+}
+
+class _EngineSettingsDialog extends StatefulWidget {
+  final EngineController engine;
+  final TextEditingController enginePathController;
+  final VoidCallback onPickEngine;
+
+  const _EngineSettingsDialog({
+    required this.engine,
+    required this.enginePathController,
+    required this.onPickEngine,
+  });
+
+  @override
+  State<_EngineSettingsDialog> createState() => _EngineSettingsDialogState();
+}
+
+class _EngineSettingsDialogState extends State<_EngineSettingsDialog> {
+  bool _showLogs = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.settings,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Engine Settings',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Engine Path',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: widget.enginePathController,
+                      decoration: const InputDecoration(
+                        labelText: 'Stockfish path',
+                        hintText: 'Select Stockfish executable',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: widget.onPickEngine,
+                            icon: const Icon(
+                              Icons.folder_open_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('Browse'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: widget.engine.isBusy
+                                ? null
+                                : () => widget.engine.useCustomEngine(
+                                    widget.enginePathController.text.trim(),
+                                  ),
+                            icon: const Icon(Icons.save_rounded, size: 18),
+                            label: const Text('Use Path'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: widget.engine.isBusy
+                          ? null
+                          : () => widget.engine.useBundledEngine(),
+                      icon: const Icon(Icons.bolt_rounded),
+                      label: const Text('Use Bundled Stockfish'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () =>
+                              setState(() => _showLogs = !_showLogs),
+                          icon: Icon(
+                            _showLogs ? Icons.expand_less : Icons.expand_more,
+                          ),
+                          label: Text(
+                            _showLogs ? 'Hide Logs' : 'Show Engine Logs',
+                          ),
+                        ),
+                        if (widget.engine.engineLogs.isNotEmpty)
+                          Text(
+                            ' (${widget.engine.engineLogs.length})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (_showLogs && widget.engine.engineLogs.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 200,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade900,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ListView.builder(
+                          itemCount: widget.engine.engineLogs.length,
+                          itemBuilder: (context, index) {
+                            final log = widget.engine.engineLogs[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                log,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                  color: log.contains('❌')
+                                      ? Colors.red.shade300
+                                      : log.contains('✓') || log.contains('✅')
+                                      ? Colors.green.shade300
+                                      : log.contains('⚠️')
+                                      ? Colors.orange.shade300
+                                      : Colors.white70,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Footer
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

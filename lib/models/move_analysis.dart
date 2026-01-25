@@ -134,6 +134,62 @@ class GameAnalysis {
     return moves[index];
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'moves': moves.map((m) => _moveToJson(m)).toList(),
+      'whiteAccuracy': whiteAccuracy,
+      'blackAccuracy': blackAccuracy,
+      'analyzedAt': analyzedAt.toIso8601String(),
+    };
+  }
+
+  static Map<String, dynamic> _moveToJson(MoveAnalysis m) {
+    return {
+      'moveNumber': m.moveNumber,
+      'move': m.move,
+      'fen': m.fen,
+      'evalBefore': m.evalBefore,
+      'evalAfter': m.evalAfter,
+      'centipawnLoss': m.centipawnLoss,
+      'bestMove': m.bestMove,
+      'classification': m.classification.name,
+      'tags': m.tags.map((t) => t.name).toList(),
+      'engineLine': m.engineLine,
+    };
+  }
+
+  factory GameAnalysis.fromJson(Map<String, dynamic> json) {
+    return GameAnalysis(
+      moves: (json['moves'] as List)
+          .map((m) => _moveFromJson(m as Map<String, dynamic>))
+          .toList(),
+      whiteAccuracy: json['whiteAccuracy'] as double,
+      blackAccuracy: json['blackAccuracy'] as double,
+      analyzedAt: DateTime.parse(json['analyzedAt'] as String),
+    );
+  }
+
+  static MoveAnalysis _moveFromJson(Map<String, dynamic> json) {
+    return MoveAnalysis(
+      moveNumber: json['moveNumber'] as int,
+      move: json['move'] as String,
+      fen: json['fen'] as String,
+      evalBefore: json['evalBefore'] as double,
+      evalAfter: json['evalAfter'] as double,
+      centipawnLoss: json['centipawnLoss'] as double,
+      bestMove: json['bestMove'] as String,
+      classification: MoveClassification.values.firstWhere(
+        (e) => e.name == json['classification'],
+      ),
+      tags: (json['tags'] as List)
+          .map((t) => MoveTag.values.firstWhere((e) => e.name == t))
+          .toList(),
+      engineLine: json['engineLine'] != null
+          ? List<String>.from(json['engineLine'] as List)
+          : null,
+    );
+  }
+
   static double _classificationScore(MoveClassification classification) {
     switch (classification) {
       case MoveClassification.best:
